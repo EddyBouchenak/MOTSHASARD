@@ -9,7 +9,8 @@ const STATE = {
     forcedIndex: 0,
     isForcing: false,
     shuffledWords: [],
-    currentIndex: 0
+    currentIndex: 0,
+    lastActiveItem: null // Track to prevent double-swapping same item
 };
 
 // --- DOM Elements ---
@@ -37,16 +38,36 @@ function shuffleArray(array) {
 }
 
 function getWordStartingWith(letter, excludeWord) {
-    // Search in the original full list to ensure we find a candidate
+    // strict mode: use the sorted dictionary if available
+    if (typeof SORTED_WORDS !== 'undefined' && SORTED_WORDS[letter]) {
+        const candidates = SORTED_WORDS[letter].filter(w => w.toUpperCase() !== excludeWord.toUpperCase());
+        if (candidates.length > 0) {
+            return candidates[Math.floor(Math.random() * candidates.length)];
+        }
+    }
+
+    // Fallback search in the full list
     const candidates = WORDS.filter(w =>
         w.toUpperCase().startsWith(letter.toUpperCase()) &&
         w.toUpperCase() !== excludeWord.toUpperCase()
     );
     if (candidates.length === 0) {
-        // Fallback: just return a random word if no match found (unlikely for common letters)
+        // Fallback: just return a random word (should not happen with good data)
         return WORDS[Math.floor(Math.random() * WORDS.length)];
     }
     return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 // --- Core Logic ---
@@ -64,30 +85,9 @@ function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
 
     for (let i = 0; i < count; i++) {
-        let nextWord;
-
-        if (STATE.isForcing && STATE.forcedWord) {
-            // --- Forcing Mode ---
-            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-
-            nextWord = getWordStartingWith(targetLetter, STATE.forcedWord);
-
-            STATE.forcedIndex++;
-
-            if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                STATE.isForcing = false;
-                STATE.forcedWord = null;
-                STATE.forcedIndex = 0;
-            }
-        } else {
-            // --- Sequential Loop Mode ---
-            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-            STATE.currentIndex++;
-
-            // Re-shuffle if we completed a full loop to prevent exact same pattern?
-            // User asked for "suite logique" (logical continuation), which implies a loop or consistent stream.
-            // Let's keep it simple: simple infinite loop of the shuffled list.
-        }
+        // ALWAYS random background words. No logic here.
+        const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+        STATE.currentIndex++;
 
         const item = createWordItem(nextWord);
         fragment.appendChild(item);
@@ -120,7 +120,7 @@ function getActiveItem() {
         const diff = Math.abs(itemCenterY - listCenterY);
 
         if (diff < minDiff) {
-            minDiff = diff;
+            minDiff = minDiff;
             activeItem = item;
         }
     }
@@ -141,16 +141,64 @@ function updateActiveState() {
     }
 }
 
-// Throttled Scroll Handler
+// --- Dynamic Force Swapping ---
+
+const handleScrollStop = debounce(() => {
+    // 1. Update visual state (unblur)
+    updateActiveState();
+
+    // 2. Force Logic: detecting correct stop
+    if (STATE.isForcing && STATE.forcedWord) {
+        const activeItem = getActiveItem();
+
+        // Prevent re-triggering on same item if we didn't move enough
+        if (activeItem && activeItem !== STATE.lastActiveItem) {
+
+            // Get the next target letter
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+
+            // Generate the forced word
+            const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
+
+            // MAGIC: Swap the text content
+            console.log(`Forcing ${targetLetter} -> ${newWord}`);
+            activeItem.textContent = newWord;
+            activeItem.style.color = "var(--accent-color)"; // Subtle hint it worked, maybe remove later
+
+            // Advance state
+            STATE.lastActiveItem = activeItem;
+            STATE.forcedIndex++;
+
+            // Check completion
+            if (STATE.forcedIndex >= STATE.forcedWord.length) {
+                console.log("Forcing Complete");
+                STATE.isForcing = false;
+                STATE.forcedWord = null;
+                STATE.forcedIndex = 0;
+            }
+        }
+    }
+}, 150); // 150ms wait to consider it a "Stop"
+
+// Scroll Handler
 let isScrolling = false;
 listElement.addEventListener('scroll', () => {
     if (!isScrolling) {
         window.requestAnimationFrame(() => {
+            // While scrolling, we can update active state to keep it responsive (optional, or just wait for stop)
+            // But for "blur" effect, we might want to keep it "blurry" while scrolling and only focus on stop.
+            // For now, let's keep the active update logic but relies strictly on CSS transition.
+
+            // Actually, for better performance and blur effect:
             updateActiveState();
+
             isScrolling = false;
         });
         isScrolling = true;
     }
+
+    // Always trigger the debounce logic
+    handleScrollStop();
 });
 
 // Update on resize too
@@ -278,29 +326,13 @@ formElement.addEventListener('submit', (e) => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
+            STATE.lastActiveItem = getActiveItem(); // Track current so we don't swap it immediately
 
-            // Use the unified getActiveItem function
-            // This is visually what the user sees as "active" in the center
-            const activeItem = getActiveItem();
-
-            if (activeItem) {
-                // Remove everything AFTER the active item to clear the path for forced words
-                while (activeItem.nextElementSibling) {
-                    activeItem.nextElementSibling.remove();
-                }
-            }
-
-            // Append the forced sequence immediately
-            // appendWords will check STATE.isForcing and generate the sequence
-            appendWords(Math.max(BATCH_SIZE, word.length + 5));
+            console.log("Forcing enabled for:", word);
 
             inputElement.value = '';
             lengthIndicator.textContent = '(0)';
 
-            console.log("Forcing enabled for:", word);
-
-            // Force an update of the active state visually
-            updateActiveState();
         }, 100);
 
     } else {
