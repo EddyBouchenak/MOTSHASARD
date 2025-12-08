@@ -72,9 +72,12 @@ function debounce(func, wait) {
 
 // --- Core Logic ---
 
-function createWordItem(text) {
+function createWordItem(text, isSnapTarget = false) {
     const li = document.createElement('li');
     li.classList.add('word-item');
+    if (isSnapTarget) {
+        li.classList.add('snap-target');
+    }
     li.textContent = text;
     // Add observer for centering
     // Observer removed in favor of scroll calculation
@@ -85,17 +88,73 @@ function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
 
     for (let i = 0; i < count; i++) {
-        // ALWAYS random background words. No logic here.
-        const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-        STATE.currentIndex++;
+        let nextWord;
+        let isSnapTarget = false;
 
-        const item = createWordItem(nextWord);
+        if (STATE.isForcing && STATE.forcedWord) {
+            if (STATE.forceCooldown <= 0) {
+                // --- Time to Force! ---
+                const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+
+                // Get strictly from sorted list if possible
+                nextWord = getWordStartingWith(targetLetter, "XXXXX"); // Exclude nothing specific
+                isSnapTarget = true;
+
+                // Advance
+                STATE.forcedIndex++;
+                // Set gap to ~15-20 words
+                STATE.forceCooldown = 15 + Math.floor(Math.random() * 5);
+
+                console.log(`Planned Snap: ${nextWord} (${targetLetter})`);
+
+                if (STATE.forcedIndex >= STATE.forcedWord.length) {
+                    STATE.isForcing = false;
+                    STATE.forcedWord = null;
+                    STATE.forcedIndex = 0;
+                }
+            } else {
+                // --- Cooldown (Random Buffer) ---
+                nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+                STATE.currentIndex++;
+                STATE.forceCooldown--;
+            }
+        } else {
+            // --- Normal Mode ---
+            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+            STATE.currentIndex++;
+            // Note: In normal mode, we can optionally make ALL words snap targets if we want standard behavior,
+            // OR keep them slippery for the "Roulette" feel. 
+            // Let's make them slippery by default (no snap-target) as per plan, so the forced ones feel special.
+            // Wait, if normal words don't snap, the list might stop between words?
+            // "scroll-snap-type: y mandatory" in CSS requires valid snap points.
+            // If random words have no snap-align, the browser will search for the nearest snap point (which might be far away!).
+            // CRITICAL FIX: Random words MUST have weak snap or no snap?
+            // If they have NO snap, the scroll will slide until it hits a forced word. This is the "Trap".
+            // But if user isn't forcing, we want normal scrolling behavior (snapping to every word).
+            // SO: If !STATE.isForcing, we might want EVERYTHING to snap?
+            // OR: We just accept that normal scrolling is "free" (like standard web), and forcing is "snappy".
+            // User asked for "Roulette" feel before. Free scroll is part of that feel.
+            // Let's stick to the plan: RANDOM = No Snap, FORCED = Snap.
+
+            // Correction: For normal usage (not Mentalist), the user expects to pick a random word?
+            // If nothing snaps, it's hard to stop exactly on center.
+            // Let's give Random Items `snap-target` ONLY IF `!STATE.isForcing`.
+            // ACTUALLY: The user never complained about normal scroll.
+            // Let's make Random Words `snap-target` unless we are in Force Mode?
+            // No, keeping it simple:
+            // "Buffer" words in Force Mode = NO SNAP.
+            // "Normal" words (when not forcing) = SNAP.
+
+            if (!STATE.isForcing) {
+                isSnapTarget = true; // Normal behavior
+            }
+        }
+
+        const item = createWordItem(nextWord, isSnapTarget);
         fragment.appendChild(item);
     }
 
     listElement.appendChild(fragment);
-
-    // Update Infinite Scroll Sentinel
     updateInfiniteScrollObserver();
 }
 
@@ -140,71 +199,19 @@ function updateActiveState() {
     }
 }
 
-// --- Dynamic Force Swapping ---
-
-const handleScrollStop = debounce(() => {
-    // 1. Force Logic: Perform the swap BEFORE visually revealing the word
-    if (STATE.isForcing && STATE.forcedWord) {
-        const activeItem = getActiveItem();
-
-        // Prevent re-triggering on same item if we didn't move enough
-        if (activeItem && activeItem !== STATE.lastActiveItem) {
-
-            // Get the next target letter
-            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-
-            // Generate the forced word
-            const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
-
-            // MAGIC: Swap the text content smoothly while it might still be blurry
-            console.log(`Forcing ${targetLetter} -> ${newWord}`);
-            activeItem.textContent = newWord;
-            activeItem.style.color = "var(--accent-color)"; // Subtle hint it worked, maybe remove later
-
-            // Advance state
-            STATE.lastActiveItem = activeItem;
-            STATE.forcedIndex++;
-
-            // Check completion
-            if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                console.log("Forcing Complete");
-                STATE.isForcing = false;
-                STATE.forcedWord = null;
-                STATE.forcedIndex = 0;
-            }
-        }
-    }
-
-    // 2. Update visible state (Unblur/Scale Up)
-    // Now that the text is swapped, we reveal it.
-    updateActiveState();
-
-}, 150); // 150ms wait to consider it a "Stop"
-
 // Scroll Handler
 let isScrolling = false;
 listElement.addEventListener('scroll', () => {
     if (!isScrolling) {
         window.requestAnimationFrame(() => {
-            // While scrolling:
-            // - If Forcing: Keep it blurry (remove active) to hide the "trick".
-            // - If Normal: Update active state immediately for smooth feel.
-
-            if (STATE.isForcing) {
-                const currentActive = listElement.querySelector('.word-item.active');
-                if (currentActive) currentActive.classList.remove('active');
-            } else {
-                updateActiveState();
-            }
-
+            // Check active state for visual purposes (blur/unblur)
+            updateActiveState();
             isScrolling = false;
         });
         isScrolling = true;
     }
-
-    // Always trigger the debounce logic
-    handleScrollStop();
 });
+
 
 // Update on resize too
 window.addEventListener('resize', updateActiveState);
@@ -331,13 +338,27 @@ formElement.addEventListener('submit', (e) => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
-            STATE.lastActiveItem = getActiveItem(); // Track current so we don't swap it immediately
+            STATE.forceCooldown = 5; // Start with a small buffer before first word (5 randoms)
 
-            console.log("Forcing enabled for:", word);
+            const activeItem = getActiveItem();
+            if (activeItem) {
+                // Clear everything after active item to ensure clean slate
+                while (activeItem.nextElementSibling) {
+                    activeItem.nextElementSibling.remove();
+                }
+            }
+
+            // Generate the Trap Sequence
+            // Length needed: (Word Length * 20 gaps) + buffer
+            // e.g. 5 letters * 20 = 100 items. 
+            // We load a massive chunk to ensure seamless scrolling
+            appendWords(Math.max(BATCH_SIZE, word.length * 25));
 
             inputElement.value = '';
             lengthIndicator.textContent = '(0)';
 
+            console.log("Snap Trap Armed for:", word);
+            updateActiveState();
         }, 100);
 
     } else {
