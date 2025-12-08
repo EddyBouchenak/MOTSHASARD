@@ -1,19 +1,15 @@
-// =================================================================================
-// js/app.js - CODE CORRIGÉ POUR LE FORÇAGE SÉQUENTIEL PAR DÉFILEMENT
-// =================================================================================
-
-// Vérification de la variable WORDS (supposée être chargée depuis data.js)
+// Remove import, verify WORDS exists
 if (typeof WORDS === 'undefined') {
-    console.error("WORDS is not defined. Ensure data.js is loaded first and defines the WORDS array globally.");
+    console.error("WORDS is not defined. Ensure data.js is loaded first.");
 }
 
 // --- State ---
 const STATE = {
-    forcedWord: null, // Le mot cible (ex: "CHIEN")
-    forcedIndex: 0,   // L'index de la lettre courante à forcer (0, 1, 2...)
-    isForcing: false, // Indique si la séquence de forçage est active
-    shuffledWords: [],// La liste des mots mélangés pour le mode aléatoire
-    currentIndex: 0   // L'index dans la liste mélangée pour le mode aléatoire
+    forcedWord: null,
+    forcedIndex: 0,
+    isForcing: false,
+    shuffledWords: [],
+    currentIndex: 0
 };
 
 // --- DOM Elements ---
@@ -26,7 +22,7 @@ const lengthIndicator = document.getElementById('word-length-indicator');
 const themeToggle = document.getElementById('theme-toggle');
 
 // --- Configuration ---
-const BATCH_SIZE = 40; // Nombre de mots à ajouter en mode aléatoire
+const BATCH_SIZE = 40; // Increased for better overflow on large screens
 
 // --- Utilities ---
 
@@ -40,26 +36,16 @@ function shuffleArray(array) {
     return arr;
 }
 
-/**
- * Recherche et retourne un mot dans la liste WORDS qui commence par 'letter',
- * sans être 'excludeWord'.
- */
 function getWordStartingWith(letter, excludeWord) {
-    // S'assurer que le tableau WORDS existe pour éviter une erreur
-    const wordList = typeof WORDS !== 'undefined' ? WORDS : [];
-
-    const candidates = wordList.filter(w =>
+    // Search in the original full list to ensure we find a candidate
+    const candidates = WORDS.filter(w =>
         w.toUpperCase().startsWith(letter.toUpperCase()) &&
         w.toUpperCase() !== excludeWord.toUpperCase()
     );
-
     if (candidates.length === 0) {
-        console.warn(`Aucun mot trouvé pour la lettre ${letter} (ou seulement le mot cible).`);
-        // Fallback: retourne un mot aléatoire non-forcé, ou le premier mot disponible
-        return wordList.length > 0 ? wordList[Math.floor(Math.random() * wordList.length)] : "PASDELETTE";
+        // Fallback: just return a random word if no match found (unlikely for common letters)
+        return WORDS[Math.floor(Math.random() * WORDS.length)];
     }
-    
-    // Retourne un candidat aléatoire
     return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
@@ -69,94 +55,118 @@ function createWordItem(text) {
     const li = document.createElement('li');
     li.classList.add('word-item');
     li.textContent = text;
-    // Ajout de l'observer de centrage
-    centerObserver.observe(li);
+    // Add observer for centering
+    // Observer removed in favor of scroll calculation
     return li;
 }
 
-/**
- * Ajoute des mots à la liste.
- * Important: N'ajoute qu'un seul mot si STATE.isForcing est vrai.
- */
 function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
-    let wordsToAppend = [];
-    
-    // Si on est en mode forçage, on ne génère qu'un seul mot à la fois pour respecter la règle.
-    const loopCount = STATE.isForcing ? 1 : count; 
-    
-    for (let i = 0; i < loopCount; i++) {
+
+    for (let i = 0; i < count; i++) {
         let nextWord;
 
         if (STATE.isForcing && STATE.forcedWord) {
-            // --- Forcing Mode (injecte 1 mot) ---
-            
-            // 1. Récupérer la lettre cible
+            // --- Forcing Mode ---
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
 
-            // 2. Trouver un mot correspondant
             nextWord = getWordStartingWith(targetLetter, STATE.forcedWord);
 
-            // 3. Passer à la lettre suivante
             STATE.forcedIndex++;
 
-            // 4. Vérifier la fin de séquence
             if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                console.log("Séquence de forçage terminée. Retour au mode aléatoire.");
                 STATE.isForcing = false;
                 STATE.forcedWord = null;
                 STATE.forcedIndex = 0;
             }
         } else {
-            // --- Sequential Loop Mode (injecte BATCH_SIZE mots) ---
+            // --- Sequential Loop Mode ---
             nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
             STATE.currentIndex++;
+
+            // Re-shuffle if we completed a full loop to prevent exact same pattern?
+            // User asked for "suite logique" (logical continuation), which implies a loop or consistent stream.
+            // Let's keep it simple: simple infinite loop of the shuffled list.
         }
-        
-        wordsToAppend.push(nextWord); 
-    }
-    
-    wordsToAppend.forEach(word => {
-        const item = createWordItem(word);
+
+        const item = createWordItem(nextWord);
         fragment.appendChild(item);
-    });
+    }
 
     listElement.appendChild(fragment);
 
-    // Mettre à jour l'Observer d'Infinite Scroll pour le dernier élément
+    // Update Infinite Scroll Sentinel
     updateInfiniteScrollObserver();
 }
 
-// --- Observers ---
+// --- Observers & Scroll Logic ---
 
-// 1. Highlight Active Item (Center)
-const centerObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('active');
-        } else {
-            entry.target.classList.remove('active');
+// Helper: Find the element geometrically closest to the center
+function getActiveItem() {
+    const listRect = listElement.getBoundingClientRect();
+    const listCenterY = listRect.top + listRect.height / 2;
+
+    // Optimization: querySelectorAll is fast enough for < 100 items. 
+    // If list grows huge, we might need optimization, but generic loop is fine here.
+    const items = listElement.querySelectorAll('.word-item');
+    let activeItem = null;
+    let minDiff = Infinity;
+
+    // We can optimization search by checking only visible items if needed, 
+    // but full iteration is robust and simple for now.
+    for (const item of items) {
+        const itemRect = item.getBoundingClientRect();
+        const itemCenterY = itemRect.top + itemRect.height / 2;
+        const diff = Math.abs(itemCenterY - listCenterY);
+
+        if (diff < minDiff) {
+            minDiff = diff;
+            activeItem = item;
         }
-    });
-}, {
-    root: listElement,
-    threshold: 0.5,
-    rootMargin: "-45% 0px -45% 0px" // Détermine le centre de l'affichage
+    }
+    return activeItem;
+}
+
+// Update UI based on scroll
+function updateActiveState() {
+    const centerItem = getActiveItem();
+
+    const currentActive = listElement.querySelector('.word-item.active');
+    if (currentActive && currentActive !== centerItem) {
+        currentActive.classList.remove('active');
+    }
+
+    if (centerItem && !centerItem.classList.contains('active')) {
+        centerItem.classList.add('active');
+    }
+}
+
+// Throttled Scroll Handler
+let isScrolling = false;
+listElement.addEventListener('scroll', () => {
+    if (!isScrolling) {
+        window.requestAnimationFrame(() => {
+            updateActiveState();
+            isScrolling = false;
+        });
+        isScrolling = true;
+    }
 });
+
+// Update on resize too
+window.addEventListener('resize', updateActiveState);
+
 
 // 2. Infinite Scroll
 const infiniteScrollObserver = new IntersectionObserver((entries) => {
     const lastEntry = entries[0];
     if (lastEntry.isIntersecting) {
-        // Déconnecte l'observer pour ne pas le déclencher plusieurs fois
         infiniteScrollObserver.unobserve(lastEntry.target);
-        
-        // C'est ici que l'appel à appendWords se fait au moment du défilement
-        appendWords(BATCH_SIZE); 
+        appendWords(BATCH_SIZE);
     }
 }, {
     root: listElement,
-    rootMargin: "300px" // Chargement anticipé
+    rootMargin: "300px" // Load well in advance
 });
 
 function updateInfiniteScrollObserver() {
@@ -172,7 +182,7 @@ function updateInfiniteScrollObserver() {
 
 function init() {
     // 1. Prepare Data
-    if (typeof WORDS !== 'undefined' && WORDS.length > 0) {
+    if (WORDS && WORDS.length > 0) {
         STATE.shuffledWords = shuffleArray(WORDS);
     } else {
         STATE.shuffledWords = ["LISTE", "VIDE", "ERREUR", "DATA"];
@@ -182,14 +192,17 @@ function init() {
     listElement.innerHTML = '';
 
     // 3. Initial Fill with Buffer
+    // We append a large batch, then scroll to the middle
     const initialCount = BATCH_SIZE * 3;
     appendWords(initialCount);
 
-    // Scroll au milieu pour commencer
+    // Scroll to the middle item
     const items = listElement.querySelectorAll('.word-item');
     if (items.length > 0) {
         const middleIndex = Math.floor(items.length / 2);
         items[middleIndex].scrollIntoView({ block: 'center' });
+        // Initial active update
+        setTimeout(updateActiveState, 100);
     }
 }
 
@@ -201,7 +214,6 @@ let clickTimer = null;
 let longPressTimer = null;
 let isPressing = false;
 
-// Logique pour ouvrir la modale (Triple clic ou Longue pression)
 triggerElement.addEventListener('click', (e) => {
     e.preventDefault();
     clickCount++;
@@ -244,68 +256,54 @@ function cancelLongPress() {
 
 function openModal() {
     modalElement.showModal();
+    // Auto-focus input
     inputElement.focus();
 }
 
-// Indicateur de longueur
+// Modal Form Handling
 inputElement.addEventListener('input', (e) => {
     const word = e.target.value.trim();
     lengthIndicator.textContent = `(${word.length})`;
 });
 
-// GESTION DU BOUTON GO (SUBMIT) - CORRECTION APPLIQUÉE ICI
 formElement.addEventListener('submit', (e) => {
     e.preventDefault();
 
     const word = inputElement.value.trim().toUpperCase();
-    
     if (word && word.length > 0) {
-        // 1. Définir le nouvel état de forçage
-        STATE.forcedWord = word;
-        STATE.forcedIndex = 0;
-        STATE.isForcing = true;
-
-        // 2. Nettoyer la liste après le mot actif (au centre)
-        const listRect = listElement.getBoundingClientRect();
-        const listCenterY = listRect.top + listRect.height / 2;
-        const items = Array.from(listElement.querySelectorAll('.word-item'));
-        let activeItem = null;
-        let minDiff = Infinity;
-
-        // Trouver l'élément le plus proche du centre (le mot actif)
-        for (const item of items) {
-            const itemRect = item.getBoundingClientRect();
-            const itemCenterY = itemRect.top + itemRect.height / 2;
-            const diff = Math.abs(itemCenterY - listCenterY);
-
-            if (diff < minDiff) {
-                minDiff = diff;
-                activeItem = item;
-            }
-        }
-
-        if (activeItem) {
-            // Supprimer TOUT ce qui est APRÈS le mot actif.
-            while (activeItem.nextElementSibling) {
-                activeItem.nextElementSibling.remove();
-            }
-            // Mettre l'observer sur le mot actif pour qu'il déclenche le nouveau mot
-            // au prochain défilement
-            infiniteScrollObserver.unobserve(activeItem);
-            infiniteScrollObserver.observe(activeItem);
-        }
-        
-        // 🛑 LIGNE CLÉ CORRIGÉE : NE PAS APPELER appendWords ICI.
-        // C'est le DÉFILEMENT (via infiniteScrollObserver) qui doit le faire.
-
         modalElement.close();
 
-        inputElement.value = '';
-        lengthIndicator.textContent = '(0)';
+        // Wait for keyboard to dismiss and layout to stabilize
+        setTimeout(() => {
+            STATE.forcedWord = word;
+            STATE.forcedIndex = 0;
+            STATE.isForcing = true;
 
-        console.log("Forcing enabled for:", word);
+            // Use the unified getActiveItem function
+            // This is visually what the user sees as "active" in the center
+            const activeItem = getActiveItem();
+
+            if (activeItem) {
+                // Remove everything AFTER the active item to clear the path for forced words
+                while (activeItem.nextElementSibling) {
+                    activeItem.nextElementSibling.remove();
+                }
+            }
+
+            // Append the forced sequence immediately
+            // appendWords will check STATE.isForcing and generate the sequence
+            appendWords(Math.max(BATCH_SIZE, word.length + 5));
+
+            inputElement.value = '';
+            lengthIndicator.textContent = '(0)';
+
+            console.log("Forcing enabled for:", word);
+
+            // Force an update of the active state visually
+            updateActiveState();
+        }, 100);
+
     } else {
-        // Si le mot est vide, on ferme sans changer d'état
         modalElement.close();
     }
 });
@@ -320,4 +318,4 @@ themeToggle.addEventListener('click', () => {
 });
 
 // Start
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', init); // Ensure DOM is ready
