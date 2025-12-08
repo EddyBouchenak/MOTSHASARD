@@ -103,24 +103,23 @@ function appendWords(count = BATCH_SIZE) {
 
 // Helper: Find the element geometrically closest to the center
 function getActiveItem() {
-    const listRect = listElement.getBoundingClientRect();
-    const listCenterY = listRect.top + listRect.height / 2;
+    // Robust viewport center calculation
+    // On mobile, the "center" is simply the middle of the screen
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const centerY = viewportHeight / 2;
 
-    // Optimization: querySelectorAll is fast enough for < 100 items. 
-    // If list grows huge, we might need optimization, but generic loop is fine here.
+    // Optimization: querySelectorAll is fast enough.
     const items = listElement.querySelectorAll('.word-item');
     let activeItem = null;
     let minDiff = Infinity;
 
-    // We can optimization search by checking only visible items if needed, 
-    // but full iteration is robust and simple for now.
     for (const item of items) {
         const itemRect = item.getBoundingClientRect();
         const itemCenterY = itemRect.top + itemRect.height / 2;
-        const diff = Math.abs(itemCenterY - listCenterY);
+        const diff = Math.abs(itemCenterY - centerY);
 
         if (diff < minDiff) {
-            minDiff = minDiff;
+            minDiff = diff;
             activeItem = item;
         }
     }

@@ -84,8 +84,8 @@ main {
     scroll-snap-type: y mandatory;
     display: flex;
     flex-direction: column;
-    padding-top: calc(50vh - var(--item-height) / 2);
-    padding-bottom: calc(50vh - var(--item-height) / 2);
+    padding-top: calc(50dvh - var(--item-height) / 2);
+    padding-bottom: calc(50dvh - var(--item-height) / 2);
     scrollbar-width: none;
     /* Firefox */
 }
