@@ -234,10 +234,29 @@ formElement.addEventListener('submit', (e) => {
 
         // Find the currently active element
         // We use the centerObserver's last known active, but querying DOM is safer
-        const activeItem = listElement.querySelector('.word-item.active');
+        // Find the currently active element
+        // Strategy: Find the element geometrically closest to the center of the list
+        // This is robust against the modal being open (which blocks elementFromPoint)
+        const listRect = listElement.getBoundingClientRect();
+        const listCenterY = listRect.top + listRect.height / 2;
+
+        const items = Array.from(listElement.querySelectorAll('.word-item'));
+        let activeItem = null;
+        let minDiff = Infinity;
+
+        for (const item of items) {
+            const itemRect = item.getBoundingClientRect();
+            const itemCenterY = itemRect.top + itemRect.height / 2;
+            const diff = Math.abs(itemCenterY - listCenterY);
+
+            if (diff < minDiff) {
+                minDiff = diff;
+                activeItem = item;
+            }
+        }
 
         if (activeItem) {
-            // Remove everything AFTER the active item
+            // Remove everything AFTER the active item to clear the path for forced words
             while (activeItem.nextElementSibling) {
                 activeItem.nextElementSibling.remove();
             }
