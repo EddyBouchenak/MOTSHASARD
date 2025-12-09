@@ -173,34 +173,26 @@ listElement.addEventListener('scroll', () => {
     // Increased threshold to 2.5 px/ms to capture "fast deceleration" before it becomes visible.
     const isLanding = Math.abs(STATE.scrollVelocity) < 2.5 && Math.abs(STATE.scrollVelocity) > 0.05;
 
-    if (STATE.isForcing && isLanding && !STATE.hasSwappedForCurrentIndex) {
-        // --- PREDICTIVE SWAP ---
-        // 1. Identify Target
+    if (STATE.isForcing && isLanding) {
+        // --- PREDICTIVE SWAP (PAINT THE LANDING STRIP) ---
+        // As the wheel decelerates, we ensure "active" items passing through the center
+        // are transformed into the target. This guarantees that wherever it stops, it's a winner.
+
         const activeItem = getActiveItem();
 
         if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
 
             // Check if we need to swap
-            if (!activeItem.textContent.startsWith(targetLetter)) {
+            if (!activeItem.getAttribute('data-forced') && !activeItem.textContent.startsWith(targetLetter)) {
                 // Get a new word
                 const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
 
                 // SWAP IT!
-                // Note: We do this only once per landing phase to avoid flickering
                 activeItem.textContent = newWord;
-
-                // Brief highlight/debug to confirm it happened (optional, keep subtle)
-                // console.log("Swapped to:", newWord);
-
-                STATE.hasSwappedForCurrentIndex = true;
+                activeItem.setAttribute('data-forced', 'true'); // Mark as handled to avoid re-generating same item
             }
         }
-    }
-
-    // Reset Swap State if velocity spikes (user flicked again)
-    if (Math.abs(STATE.scrollVelocity) > 1.0) {
-        STATE.hasSwappedForCurrentIndex = false;
     }
 
     // Debounced "Scroll End" to confirm selection
@@ -225,6 +217,9 @@ listElement.addEventListener('scroll', () => {
                     STATE.forcedWord = null;
                     STATE.forcedIndex = 0;
                     console.log("Forcing Complete.");
+
+                    // Cleanup marks
+                    listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
                 }
             }
         }
