@@ -31,7 +31,7 @@ const lengthIndicator = document.getElementById('word-length-indicator');
 const themeToggle = document.getElementById('theme-toggle');
 
 // --- Configuration ---
-const BATCH_SIZE = 40; // Increased for better overflow on large screens
+const BATCH_SIZE = 80; // Increased for better overflow on large screens
 
 // --- Utilities ---
 
@@ -198,31 +198,84 @@ listElement.addEventListener('scroll', () => {
     // 3. SLOW (< 0.5): SWAP. The user is about to land. Ensure the target is there.
 
     const isFast = absVelocity > 3.5;
-    const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
+    // --- FORCING LOGIC REFINED: ANTICIPATION ---
+    // Goal: Pre-load the "Tube" with valid words BEFORE they hit the center.
+    // This removes the "Visual Glitch" of the center word changing.
 
-    if (STATE.isForcing && (isFast || isStopping)) {
-        // --- PREDICTIVE SWAP ---
+    // Always predict on Landing (Low Speed) to ensure the final destination is valid.
+    // Also predict during High Speed (Spinning) to populate the list.
+    // AND predict during Medium Speed, but TARGETING COMING ITEMS, not the active one.
+
+    if (STATE.isForcing) {
+        // We always run this correction loop, but we target different items based on physics.
         const activeItem = getActiveItem();
 
         if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-
-            // 0-indexed position
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
-            const currentWord = activeItem.textContent;
-            const currentLetterAtPos = currentWord[targetIndex]; // Might be undefined
+            // Strategy:
+            // 1. Identify "Incoming" items based on direction.
+            //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
+            //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
+            // 2. Modify "Incoming" items aggressively.
+            // 3. ONLY Modify "Active" item if:
+            //    a) We are STOPPING (cleaning up the landing).
+            //    b) We are SPINNING FAST (invisible).
 
-            const matchesRequirement = currentLetterAtPos === targetLetter;
+            // Define the "Correction Zone"
+            let itemsToCorrect = [];
 
-            // Only swap if it doesn't match AND we haven't already fixed this item
-            if (!matchesRequirement) {
-                const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
+            // A. The Active Item (Current Center)
+            // Rules: Correct IF (Stopping OR Fast Spin). 
+            // If Medium speed, LEAVE IT ALONE to avoid glitch.
+            const isMediumSpeed = absVelocity >= 0.5 && absVelocity <= 3.5;
 
-                // SWAP IT!
-                activeItem.textContent = newWord;
-                activeItem.setAttribute('data-forced', 'true');
+            if (!isMediumSpeed) {
+                itemsToCorrect.push(activeItem);
             }
+
+            // B. The Future Items (Anticipation)
+            // Look ahead 1 to 5 items to create a seamless buffer.
+            let nextCandidate = activeItem;
+            const direction = STATE.scrollVelocity > 0 ? 1 : -1;
+            const lookAheadCount = 5; // How many words ahead to fix?
+
+            for (let i = 0; i < lookAheadCount; i++) {
+                if (direction > 0) {
+                    nextCandidate = nextCandidate.nextElementSibling;
+                } else {
+                    nextCandidate = nextCandidate.previousElementSibling;
+                }
+
+                if (nextCandidate) {
+                    itemsToCorrect.push(nextCandidate);
+                } else {
+                    break;
+                }
+            }
+
+            // Apply Correction to collected items
+            itemsToCorrect.forEach(item => {
+                const currentWord = item.textContent;
+                // Optimization: Don't re-read/re-write if already good
+                // Check if it matches requirement
+                const letterAtPos = currentWord[targetIndex];
+
+                // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
+                // we might still want to swap to ensure variety if needed, 
+                // but for now, simple matching is enough.
+
+                // Only skip if it matches the target letter.
+                if (letterAtPos !== targetLetter) {
+                    // SWAP
+                    const newWord = getWordStartingWith(targetLetter, currentWord);
+                    item.textContent = newWord;
+                    // Mark it so we don't swap it again unnecessarily
+                    // (Though our check above handles that, the attribute might be useful for debug)
+                    item.setAttribute('data-forced', 'true');
+                }
+            });
         }
     }
 
@@ -423,7 +476,7 @@ formElement.addEventListener('submit', (e) => {
             // e.g. 5 letters * 20 = 100 items. 
             // We load a massive chunk to ensure seamless scrolling
             // Fill the list with random noise
-            appendWords(Math.max(BATCH_SIZE, 100));
+            appendWords(Math.max(BATCH_SIZE, 300));
 
             inputElement.value = '';
             lengthIndicator.textContent = '(0)';
