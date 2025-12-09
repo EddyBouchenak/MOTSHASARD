@@ -10,7 +10,13 @@ const STATE = {
     isForcing: false,
     shuffledWords: [],
     currentIndex: 0,
-    lastActiveItem: null // Track to prevent double-swapping same item
+    currentIndex: 0,
+    // Velocity & Prediction
+    lastScrollTop: 0,
+    lastScrollTime: Date.now(),
+    scrollVelocity: 0,
+    isLanding: false,
+    hasSwappedForCurrentIndex: false
 };
 
 // --- DOM Elements ---
@@ -72,9 +78,12 @@ function debounce(func, wait) {
 
 // --- Core Logic ---
 
-function createWordItem(text) {
+function createWordItem(text, isSnapTarget = false) {
     const li = document.createElement('li');
     li.classList.add('word-item');
+    if (isSnapTarget) {
+        li.classList.add('snap-target');
+    }
     li.textContent = text;
     // Add observer for centering
     // Observer removed in favor of scroll calculation
@@ -85,17 +94,19 @@ function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
 
     for (let i = 0; i < count; i++) {
-        // ALWAYS random background words. No logic here.
+        // Pure Random Generation
         const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
         STATE.currentIndex++;
 
-        const item = createWordItem(nextWord);
+        // In the new system, EVERY word is a potential landing spot (snap target)
+        // This ensures consistent physics for the prediction engine.
+        const isSnapTarget = true;
+
+        const item = createWordItem(nextWord, isSnapTarget);
         fragment.appendChild(item);
     }
 
     listElement.appendChild(fragment);
-
-    // Update Infinite Scroll Sentinel
     updateInfiniteScrollObserver();
 }
 
@@ -140,65 +151,86 @@ function updateActiveState() {
     }
 }
 
-// --- Dynamic Force Swapping ---
+// Scroll Handler
+// Scroll Handler with Prediction
+let scrollTimeout;
+listElement.addEventListener('scroll', () => {
+    const now = Date.now();
+    const currentScrollTop = listElement.scrollTop;
 
-const handleScrollStop = debounce(() => {
-    // 1. Update visual state (unblur)
-    updateActiveState();
+    // Calculate Velocity (pixels per ms)
+    const dt = now - STATE.lastScrollTime;
+    if (dt > 0) {
+        const dy = currentScrollTop - STATE.lastScrollTop;
+        STATE.scrollVelocity = dy / dt;
+    }
 
-    // 2. Force Logic: detecting correct stop
-    if (STATE.isForcing && STATE.forcedWord) {
+    STATE.lastScrollTop = currentScrollTop;
+    STATE.lastScrollTime = now;
+
+    // Detect Deceleration / Landing Phase
+    // Thresholds: High velocity = swiping. Low velocity = stopping.
+    // Increased threshold to 2.5 px/ms to capture "fast deceleration" before it becomes visible.
+    const isLanding = Math.abs(STATE.scrollVelocity) < 2.5 && Math.abs(STATE.scrollVelocity) > 0.05;
+
+    if (STATE.isForcing && isLanding && !STATE.hasSwappedForCurrentIndex) {
+        // --- PREDICTIVE SWAP ---
+        // 1. Identify Target
         const activeItem = getActiveItem();
 
-        // Prevent re-triggering on same item if we didn't move enough
-        if (activeItem && activeItem !== STATE.lastActiveItem) {
-
-            // Get the next target letter
+        if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
 
-            // Generate the forced word
-            const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
+            // Check if we need to swap
+            if (!activeItem.textContent.startsWith(targetLetter)) {
+                // Get a new word
+                const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
 
-            // MAGIC: Swap the text content
-            console.log(`Forcing ${targetLetter} -> ${newWord}`);
-            activeItem.textContent = newWord;
-            activeItem.style.color = "var(--accent-color)"; // Subtle hint it worked, maybe remove later
+                // SWAP IT!
+                // Note: We do this only once per landing phase to avoid flickering
+                activeItem.textContent = newWord;
 
-            // Advance state
-            STATE.lastActiveItem = activeItem;
-            STATE.forcedIndex++;
+                // Brief highlight/debug to confirm it happened (optional, keep subtle)
+                // console.log("Swapped to:", newWord);
 
-            // Check completion
-            if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                console.log("Forcing Complete");
-                STATE.isForcing = false;
-                STATE.forcedWord = null;
-                STATE.forcedIndex = 0;
+                STATE.hasSwappedForCurrentIndex = true;
             }
         }
     }
-}, 150); // 150ms wait to consider it a "Stop"
 
-// Scroll Handler
-let isScrolling = false;
-listElement.addEventListener('scroll', () => {
-    if (!isScrolling) {
-        window.requestAnimationFrame(() => {
-            // While scrolling, we can update active state to keep it responsive (optional, or just wait for stop)
-            // But for "blur" effect, we might want to keep it "blurry" while scrolling and only focus on stop.
-            // For now, let's keep the active update logic but relies strictly on CSS transition.
-
-            // Actually, for better performance and blur effect:
-            updateActiveState();
-
-            isScrolling = false;
-        });
-        isScrolling = true;
+    // Reset Swap State if velocity spikes (user flicked again)
+    if (Math.abs(STATE.scrollVelocity) > 1.0) {
+        STATE.hasSwappedForCurrentIndex = false;
     }
 
-    // Always trigger the debounce logic
-    handleScrollStop();
+    // Debounced "Scroll End" to confirm selection
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+        // Scroll completely stopped
+        updateActiveState();
+
+        if (STATE.isForcing) {
+            const centerItem = getActiveItem();
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+
+            if (centerItem && centerItem.textContent.startsWith(targetLetter)) {
+                // Success! Move to next letter for next scroll
+                STATE.forcedIndex++;
+                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
+
+                console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
+
+                if (STATE.forcedIndex >= STATE.forcedWord.length) {
+                    STATE.isForcing = false;
+                    STATE.forcedWord = null;
+                    STATE.forcedIndex = 0;
+                    console.log("Forcing Complete.");
+                }
+            }
+        }
+    }, 150); // 150ms without scroll event = stop
 });
+
 
 // Update on resize too
 window.addEventListener('resize', updateActiveState);
@@ -230,7 +262,9 @@ function updateInfiniteScrollObserver() {
 function init() {
     // 1. Prepare Data
     if (WORDS && WORDS.length > 0) {
-        STATE.shuffledWords = shuffleArray(WORDS);
+        // Filter out unwanted markers
+        const filteredWords = WORDS.filter(w => !['DEBUT', 'FIN', 'LISTE', 'VIDE'].includes(w.toUpperCase()));
+        STATE.shuffledWords = shuffleArray(filteredWords);
     } else {
         STATE.shuffledWords = ["LISTE", "VIDE", "ERREUR", "DATA"];
     }
@@ -325,13 +359,29 @@ formElement.addEventListener('submit', (e) => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
-            STATE.lastActiveItem = getActiveItem(); // Track current so we don't swap it immediately
+            STATE.forceCooldown = 0; // Not used in predictive mode
+            STATE.hasSwappedForCurrentIndex = false;
 
-            console.log("Forcing enabled for:", word);
+            const activeItem = getActiveItem();
+            if (activeItem) {
+                // Clear everything after active item to ensure clean slate
+                while (activeItem.nextElementSibling) {
+                    activeItem.nextElementSibling.remove();
+                }
+            }
+
+            // Generate the Trap Sequence
+            // Length needed: (Word Length * 20 gaps) + buffer
+            // e.g. 5 letters * 20 = 100 items. 
+            // We load a massive chunk to ensure seamless scrolling
+            // Fill the list with random noise
+            appendWords(Math.max(BATCH_SIZE, 100));
 
             inputElement.value = '';
             lengthIndicator.textContent = '(0)';
 
+            console.log("Snap Trap Armed for:", word);
+            updateActiveState();
         }, 100);
 
     } else {
