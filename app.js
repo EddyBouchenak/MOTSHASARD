@@ -102,8 +102,8 @@ function appendWords(count = BATCH_SIZE) {
 
                 // Advance
                 STATE.forcedIndex++;
-                // Set gap to ~15-20 words
-                STATE.forceCooldown = 15 + Math.floor(Math.random() * 5);
+                // Set gap to a natural flow (approx 25-35 words)
+                STATE.forceCooldown = 25 + Math.floor(Math.random() * 10);
 
                 console.log(`Planned Snap: ${nextWord} (${targetLetter})`);
 
@@ -243,7 +243,9 @@ function updateInfiniteScrollObserver() {
 function init() {
     // 1. Prepare Data
     if (WORDS && WORDS.length > 0) {
-        STATE.shuffledWords = shuffleArray(WORDS);
+        // Filter out unwanted markers
+        const filteredWords = WORDS.filter(w => !['DEBUT', 'FIN', 'LISTE', 'VIDE'].includes(w.toUpperCase()));
+        STATE.shuffledWords = shuffleArray(filteredWords);
     } else {
         STATE.shuffledWords = ["LISTE", "VIDE", "ERREUR", "DATA"];
     }
@@ -338,7 +340,7 @@ formElement.addEventListener('submit', (e) => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
-            STATE.forceCooldown = 5; // Start with a small buffer before first word (5 randoms)
+            STATE.forceCooldown = 10; // Start with a buffer for natural acceleration
 
             const activeItem = getActiveItem();
             if (activeItem) {
