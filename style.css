@@ -201,3 +201,63 @@ dialog h2 {
 #mentalist-modal button:active {
     transform: scale(0.98);
 }
+
+/* Rank Selector Styles */
+.rank-selector {
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.rank-selector label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.rank-options {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.rank-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.rank-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.rank-option span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px;
+    height: 30px;
+    border: 2px solid var(--text-color);
+    border-radius: 4px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.rank-option input:checked+span {
+    background: var(--text-color);
+    color: var(--bg-color);
+    border-color: var(--text-color);
+}
+
+/* Physics & Scrolling UX */
+/* When this class is active, we remove snapping to allow free spin */
+.word-list.is-spinning {
+    scroll-snap-type: none;
+}
+
+/* Ensure minimal friction on touch */
+.word-list {
+    -webkit-overflow-scrolling: touch;
+}

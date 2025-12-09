@@ -11,12 +11,14 @@ const STATE = {
     shuffledWords: [],
     currentIndex: 0,
     currentIndex: 0,
+    currentIndex: 0,
     // Velocity & Prediction
     lastScrollTop: 0,
     lastScrollTime: Date.now(),
     scrollVelocity: 0,
     isLanding: false,
-    hasSwappedForCurrentIndex: false
+    hasSwappedForCurrentIndex: false,
+    forcedRank: 1 // Default position 1
 };
 
 // --- DOM Elements ---
@@ -44,24 +46,27 @@ function shuffleArray(array) {
 }
 
 function getWordStartingWith(letter, excludeWord) {
-    // strict mode: use the sorted dictionary if available
-    if (typeof SORTED_WORDS !== 'undefined' && SORTED_WORDS[letter]) {
-        const candidates = SORTED_WORDS[letter].filter(w => w.toUpperCase() !== excludeWord.toUpperCase());
-        if (candidates.length > 0) {
-            return candidates[Math.floor(Math.random() * candidates.length)];
+    // Advanced Mode: Use Rank
+    // If STATE.forcedRank is defined, we look for words where letter is at that rank.
+    // Rank 1 = Index 0, Rank 2 = Index 1, etc.
+
+    if (typeof WORDS_BY_RANK !== 'undefined' && STATE.isForcing) {
+        const rank = STATE.forcedRank || 1;
+        const candidates = WORDS_BY_RANK[rank] ? WORDS_BY_RANK[rank][letter] : null;
+
+        if (candidates && candidates.length > 0) {
+            // Filter out exact match of excludeWord if needed 
+            // (though excludeWord might not be in this specific list)
+            const validCandidates = candidates.filter(w => w !== excludeWord);
+
+            if (validCandidates.length > 0) {
+                return validCandidates[Math.floor(Math.random() * validCandidates.length)];
+            }
         }
     }
 
-    // Fallback search in the full list
-    const candidates = WORDS.filter(w =>
-        w.toUpperCase().startsWith(letter.toUpperCase()) &&
-        w.toUpperCase() !== excludeWord.toUpperCase()
-    );
-    if (candidates.length === 0) {
-        // Fallback: just return a random word (should not happen with good data)
-        return WORDS[Math.floor(Math.random() * WORDS.length)];
-    }
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    // Fallback: Random from global list (should rarely happen if data is good)
+    return WORDS[Math.floor(Math.random() * WORDS.length)];
 }
 
 function debounce(func, wait) {
@@ -165,8 +170,21 @@ listElement.addEventListener('scroll', () => {
         STATE.scrollVelocity = dy / dt;
     }
 
-    STATE.lastScrollTop = currentScrollTop;
-    STATE.lastScrollTime = now;
+    // Velocity & Physics
+    // High velocity = "Spinning" mode (no snap)
+    // Low velocity = "Landing" mode (snap enabled via CSS removal)
+
+    if (Math.abs(STATE.scrollVelocity) > 3.5) {
+        // Fast spin!
+        if (!listElement.classList.contains('is-spinning')) {
+            listElement.classList.add('is-spinning');
+        }
+    } else if (Math.abs(STATE.scrollVelocity) < 1.0) {
+        // Slow enough to snap
+        if (listElement.classList.contains('is-spinning')) {
+            listElement.classList.remove('is-spinning');
+        }
+    }
 
     // Detect Deceleration / Landing Phase
     // Thresholds: High velocity = swiping. Low velocity = stopping.
@@ -184,13 +202,24 @@ listElement.addEventListener('scroll', () => {
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
 
             // Check if we need to swap
-            if (!activeItem.getAttribute('data-forced') && !activeItem.textContent.startsWith(targetLetter)) {
-                // Get a new word
+            // Logic: Does the active item fulfill the requirement?
+            // Requirement: "activeItem" must have "targetLetter" at "forcedRank" position.
+
+            // 0-indexed position
+            const targetIndex = (STATE.forcedRank || 1) - 1;
+
+            const currentWord = activeItem.textContent;
+            const currentLetterAtPos = currentWord[targetIndex]; // Might be undefined if word too short
+
+            const matchesRequirement = currentLetterAtPos === targetLetter;
+
+            if (!activeItem.getAttribute('data-forced') && !matchesRequirement) {
+                // Get a new word that puts targetLetter at forcedRank
                 const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
 
                 // SWAP IT!
                 activeItem.textContent = newWord;
-                activeItem.setAttribute('data-forced', 'true'); // Mark as handled to avoid re-generating same item
+                activeItem.setAttribute('data-forced', 'true');
             }
         }
     }
@@ -199,16 +228,24 @@ listElement.addEventListener('scroll', () => {
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
         // Scroll completely stopped
+        // Ensure snap is active
+        listElement.classList.remove('is-spinning');
+
         updateActiveState();
 
         if (STATE.isForcing) {
             const centerItem = getActiveItem();
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+            const targetIndex = (STATE.forcedRank || 1) - 1;
 
-            if (centerItem && centerItem.textContent.startsWith(targetLetter)) {
+            // Check success
+            if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
                 // Success! Move to next letter for next scroll
                 STATE.forcedIndex++;
                 STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
+
+                // Cleanup marks for the next round
+                listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
 
                 console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
 
@@ -216,10 +253,8 @@ listElement.addEventListener('scroll', () => {
                     STATE.isForcing = false;
                     STATE.forcedWord = null;
                     STATE.forcedIndex = 0;
+                    STATE.forcedRank = 1; // Reset
                     console.log("Forcing Complete.");
-
-                    // Cleanup marks
-                    listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
                 }
             }
         }
@@ -345,6 +380,10 @@ inputElement.addEventListener('input', (e) => {
 formElement.addEventListener('submit', (e) => {
     e.preventDefault();
 
+    // Read Rank
+    const rankInput = formElement.querySelector('input[name="rank"]:checked');
+    const rank = rankInput ? parseInt(rankInput.value, 10) : 1;
+
     const word = inputElement.value.trim().toUpperCase();
     if (word && word.length > 0) {
         modalElement.close();
@@ -353,9 +392,12 @@ formElement.addEventListener('submit', (e) => {
         setTimeout(() => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
+            STATE.forcedRank = rank; // Store Rank
             STATE.isForcing = true;
-            STATE.forceCooldown = 0; // Not used in predictive mode
+            STATE.forceCooldown = 0;
             STATE.hasSwappedForCurrentIndex = false;
+
+            console.log(`ARMED: Word=${word}, Rank=${rank}`);
 
             const activeItem = getActiveItem();
             if (activeItem) {
