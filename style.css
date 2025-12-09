@@ -32,6 +32,10 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    touch-action: pan-y;
+    /* Disable horizontal swipe/zoom */
+    overscroll-behavior-x: none;
+    /* Prevent browser back/forward swipe */
 }
 
 /* Theme Toggle */
