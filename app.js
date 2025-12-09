@@ -90,19 +90,13 @@ function createWordItem(text, isSnapTarget = false) {
     return li;
 }
 
-const fragment = document.createDocumentFragment();
 
-for (let i = 0; i < count; i++) {
-    // Pure Random Generation
-    const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-    STATE.currentIndex++;
+// In the new system, EVERY word is a potential landing spot (snap target)
+// This ensures consistent physics for the prediction engine.
+const isSnapTarget = true;
 
-    // In the new system, EVERY word is a potential landing spot (snap target)
-    // This ensures consistent physics for the prediction engine.
-    const isSnapTarget = true;
-
-    const item = createWordItem(nextWord, isSnapTarget);
-    fragment.appendChild(item);
+const item = createWordItem(nextWord, isSnapTarget);
+fragment.appendChild(item);
 }
 
 listElement.appendChild(fragment);
