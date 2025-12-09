@@ -174,47 +174,49 @@ listElement.addEventListener('scroll', () => {
     // High velocity = "Spinning" mode (no snap)
     // Low velocity = "Landing" mode (snap enabled via CSS removal)
 
-    if (Math.abs(STATE.scrollVelocity) > 3.5) {
+    const absVelocity = Math.abs(STATE.scrollVelocity);
+
+    if (absVelocity > 3.5) {
         // Fast spin!
         if (!listElement.classList.contains('is-spinning')) {
             listElement.classList.add('is-spinning');
         }
-    } else if (Math.abs(STATE.scrollVelocity) < 1.0) {
+    } else if (absVelocity < 1.0) {
         // Slow enough to snap
         if (listElement.classList.contains('is-spinning')) {
             listElement.classList.remove('is-spinning');
         }
     }
 
-    // Detect Deceleration / Landing Phase
-    // Thresholds: High velocity = swiping. Low velocity = stopping.
-    // Increased threshold to 2.5 px/ms to capture "fast deceleration" before it becomes visible.
-    const isLanding = Math.abs(STATE.scrollVelocity) < 2.5 && Math.abs(STATE.scrollVelocity) > 0.05;
+    // --- FORCING LOGIC REFINED ---
+    // Goal: Match "Home Page" feel (Randomness) while guaranteeing the landing.
+    // Strategy:
+    // 1. FAST (> 3.5): Swap freely. The list is blurred, user can't see the words changing. 
+    //    This "arms" the list with potential winners.
+    // 2. MEDIUM (0.5 to 3.5): DO NOT SWAP. The list is sharp(er) and moving. 
+    //    Show random words to prove it's "real".
+    // 3. SLOW (< 0.5): SWAP. The user is about to land. Ensure the target is there.
 
-    if (STATE.isForcing && isLanding) {
-        // --- PREDICTIVE SWAP (PAINT THE LANDING STRIP) ---
-        // As the wheel decelerates, we ensure "active" items passing through the center
-        // are transformed into the target. This guarantees that wherever it stops, it's a winner.
+    const isFast = absVelocity > 3.5;
+    const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
 
+    if (STATE.isForcing && (isFast || isStopping)) {
+        // --- PREDICTIVE SWAP ---
         const activeItem = getActiveItem();
 
         if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
 
-            // Check if we need to swap
-            // Logic: Does the active item fulfill the requirement?
-            // Requirement: "activeItem" must have "targetLetter" at "forcedRank" position.
-
             // 0-indexed position
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
             const currentWord = activeItem.textContent;
-            const currentLetterAtPos = currentWord[targetIndex]; // Might be undefined if word too short
+            const currentLetterAtPos = currentWord[targetIndex]; // Might be undefined
 
             const matchesRequirement = currentLetterAtPos === targetLetter;
 
-            if (!activeItem.getAttribute('data-forced') && !matchesRequirement) {
-                // Get a new word that puts targetLetter at forcedRank
+            // Only swap if it doesn't match AND we haven't already fixed this item
+            if (!matchesRequirement) {
                 const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
 
                 // SWAP IT!
@@ -239,6 +241,15 @@ listElement.addEventListener('scroll', () => {
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
             // Check success
+            // Force-Update on Stop: If we somehow missed the swap during slowdown,
+            // we do a final "glitch" swap here to enforce the rule.
+            if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
+                console.log("Failsafe Swap Triggered");
+                const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
+                centerItem.textContent = fixedWord;
+            }
+
+            // Verify again after potential fix
             if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
                 // Success! Move to next letter for next scroll
                 STATE.forcedIndex++;
