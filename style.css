@@ -21,12 +21,20 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+html {
+    overflow-x: hidden;
+    width: 100vw;
+}
+
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-family: var(--font-main);
     height: 100dvh;
+    width: 100vw;
     overflow: hidden;
+    /* Already prevents scroll, but x-hidden makes it explicit globally */
+    overflow-x: hidden;
     /* Prevent body scroll, only list scrolls */
     transition: background-color 0.3s, color 0.3s;
     display: flex;
@@ -36,6 +44,9 @@ body {
     /* Disable horizontal swipe/zoom */
     overscroll-behavior-x: none;
     /* Prevent browser back/forward swipe */
+    position: fixed;
+    /* Lock body in place */
+    inset: 0;
 }
 
 /* Theme Toggle */
