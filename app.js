@@ -90,17 +90,24 @@ function createWordItem(text, isSnapTarget = false) {
     return li;
 }
 
+function appendWords(count = BATCH_SIZE) {
+    const fragment = document.createDocumentFragment();
 
-// In the new system, EVERY word is a potential landing spot (snap target)
-// This ensures consistent physics for the prediction engine.
-const isSnapTarget = true;
+    for (let i = 0; i < count; i++) {
+        // Pure Random Generation
+        const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+        STATE.currentIndex++;
 
-const item = createWordItem(nextWord, isSnapTarget);
-fragment.appendChild(item);
-}
+        // In the new system, EVERY word is a potential landing spot (snap target)
+        // This ensures consistent physics for the prediction engine.
+        const isSnapTarget = true;
 
-listElement.appendChild(fragment);
-updateInfiniteScrollObserver();
+        const item = createWordItem(nextWord, isSnapTarget);
+        fragment.appendChild(item);
+    }
+
+    listElement.appendChild(fragment);
+    updateInfiniteScrollObserver();
 }
 
 // --- Observers & Scroll Logic ---
@@ -163,8 +170,8 @@ listElement.addEventListener('scroll', () => {
 
     // Detect Deceleration / Landing Phase
     // Thresholds: High velocity = swiping. Low velocity = stopping.
-    // We treat anything below ~0.5 px/ms as "landing soon"
-    const isLanding = Math.abs(STATE.scrollVelocity) < 0.5 && Math.abs(STATE.scrollVelocity) > 0.01;
+    // Increased threshold to 2.5 px/ms to capture "fast deceleration" before it becomes visible.
+    const isLanding = Math.abs(STATE.scrollVelocity) < 2.5 && Math.abs(STATE.scrollVelocity) > 0.05;
 
     if (STATE.isForcing && isLanding && !STATE.hasSwappedForCurrentIndex) {
         // --- PREDICTIVE SWAP ---
