@@ -188,16 +188,6 @@ listElement.addEventListener('scroll', () => {
         }
     }
 
-    // --- FORCING LOGIC REFINED ---
-    // Goal: Match "Home Page" feel (Randomness) while guaranteeing the landing.
-    // Strategy:
-    // 1. FAST (> 3.5): Swap freely. The list is blurred, user can't see the words changing. 
-    //    This "arms" the list with potential winners.
-    // 2. MEDIUM (0.5 to 3.5): DO NOT SWAP. The list is sharp(er) and moving. 
-    //    Show random words to prove it's "real".
-    // 3. SLOW (< 0.5): SWAP. The user is about to land. Ensure the target is there.
-
-    const isFast = absVelocity > 3.5;
     // --- FORCING LOGIC REFINED: ANTICIPATION ---
     // Goal: Pre-load the "Tube" with valid words BEFORE they hit the center.
     // This removes the "Visual Glitch" of the center word changing.
@@ -226,12 +216,13 @@ listElement.addEventListener('scroll', () => {
             // Define the "Correction Zone"
             let itemsToCorrect = [];
 
-            // A. The Active Item (Current Center)
-            // Rules: Correct IF (Stopping OR Fast Spin). 
-            // If Medium speed, LEAVE IT ALONE to avoid glitch.
-            const isMediumSpeed = absVelocity >= 0.5 && absVelocity <= 3.5;
+            // LOGIC THRESHOLD (Kept High to avoid visible glitches)
+            const isFast = absVelocity > 3.0; // Still high for invisible swaps
+            const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
 
-            if (!isMediumSpeed) {
+            // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
+            // It is sharp enough to be read, so changing it looks like a glitch.
+            if (isFast || isStopping) {
                 itemsToCorrect.push(activeItem);
             }
 
