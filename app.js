@@ -10,7 +10,13 @@ const STATE = {
     isForcing: false,
     shuffledWords: [],
     currentIndex: 0,
-    lastActiveItem: null // Track to prevent double-swapping same item
+    currentIndex: 0,
+    // Velocity & Prediction
+    lastScrollTop: 0,
+    lastScrollTime: Date.now(),
+    scrollVelocity: 0,
+    isLanding: false,
+    hasSwappedForCurrentIndex: false
 };
 
 // --- DOM Elements ---
@@ -84,78 +90,23 @@ function createWordItem(text, isSnapTarget = false) {
     return li;
 }
 
-function appendWords(count = BATCH_SIZE) {
-    const fragment = document.createDocumentFragment();
+const fragment = document.createDocumentFragment();
 
-    for (let i = 0; i < count; i++) {
-        let nextWord;
-        let isSnapTarget = false;
+for (let i = 0; i < count; i++) {
+    // Pure Random Generation
+    const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+    STATE.currentIndex++;
 
-        if (STATE.isForcing && STATE.forcedWord) {
-            if (STATE.forceCooldown <= 0) {
-                // --- Time to Force! ---
-                const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+    // In the new system, EVERY word is a potential landing spot (snap target)
+    // This ensures consistent physics for the prediction engine.
+    const isSnapTarget = true;
 
-                // Get strictly from sorted list if possible
-                nextWord = getWordStartingWith(targetLetter, "XXXXX"); // Exclude nothing specific
-                isSnapTarget = true;
+    const item = createWordItem(nextWord, isSnapTarget);
+    fragment.appendChild(item);
+}
 
-                // Advance
-                STATE.forcedIndex++;
-                // Set gap to a natural flow (approx 25-35 words)
-                STATE.forceCooldown = 25 + Math.floor(Math.random() * 10);
-
-                console.log(`Planned Snap: ${nextWord} (${targetLetter})`);
-
-                if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                    STATE.isForcing = false;
-                    STATE.forcedWord = null;
-                    STATE.forcedIndex = 0;
-                }
-            } else {
-                // --- Cooldown (Random Buffer) ---
-                nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-                STATE.currentIndex++;
-                STATE.forceCooldown--;
-            }
-        } else {
-            // --- Normal Mode ---
-            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-            STATE.currentIndex++;
-            // Note: In normal mode, we can optionally make ALL words snap targets if we want standard behavior,
-            // OR keep them slippery for the "Roulette" feel. 
-            // Let's make them slippery by default (no snap-target) as per plan, so the forced ones feel special.
-            // Wait, if normal words don't snap, the list might stop between words?
-            // "scroll-snap-type: y mandatory" in CSS requires valid snap points.
-            // If random words have no snap-align, the browser will search for the nearest snap point (which might be far away!).
-            // CRITICAL FIX: Random words MUST have weak snap or no snap?
-            // If they have NO snap, the scroll will slide until it hits a forced word. This is the "Trap".
-            // But if user isn't forcing, we want normal scrolling behavior (snapping to every word).
-            // SO: If !STATE.isForcing, we might want EVERYTHING to snap?
-            // OR: We just accept that normal scrolling is "free" (like standard web), and forcing is "snappy".
-            // User asked for "Roulette" feel before. Free scroll is part of that feel.
-            // Let's stick to the plan: RANDOM = No Snap, FORCED = Snap.
-
-            // Correction: For normal usage (not Mentalist), the user expects to pick a random word?
-            // If nothing snaps, it's hard to stop exactly on center.
-            // Let's give Random Items `snap-target` ONLY IF `!STATE.isForcing`.
-            // ACTUALLY: The user never complained about normal scroll.
-            // Let's make Random Words `snap-target` unless we are in Force Mode?
-            // No, keeping it simple:
-            // "Buffer" words in Force Mode = NO SNAP.
-            // "Normal" words (when not forcing) = SNAP.
-
-            if (!STATE.isForcing) {
-                isSnapTarget = true; // Normal behavior
-            }
-        }
-
-        const item = createWordItem(nextWord, isSnapTarget);
-        fragment.appendChild(item);
-    }
-
-    listElement.appendChild(fragment);
-    updateInfiniteScrollObserver();
+listElement.appendChild(fragment);
+updateInfiniteScrollObserver();
 }
 
 // --- Observers & Scroll Logic ---
@@ -200,16 +151,83 @@ function updateActiveState() {
 }
 
 // Scroll Handler
-let isScrolling = false;
+// Scroll Handler with Prediction
+let scrollTimeout;
 listElement.addEventListener('scroll', () => {
-    if (!isScrolling) {
-        window.requestAnimationFrame(() => {
-            // Check active state for visual purposes (blur/unblur)
-            updateActiveState();
-            isScrolling = false;
-        });
-        isScrolling = true;
+    const now = Date.now();
+    const currentScrollTop = listElement.scrollTop;
+
+    // Calculate Velocity (pixels per ms)
+    const dt = now - STATE.lastScrollTime;
+    if (dt > 0) {
+        const dy = currentScrollTop - STATE.lastScrollTop;
+        STATE.scrollVelocity = dy / dt;
     }
+
+    STATE.lastScrollTop = currentScrollTop;
+    STATE.lastScrollTime = now;
+
+    // Detect Deceleration / Landing Phase
+    // Thresholds: High velocity = swiping. Low velocity = stopping.
+    // We treat anything below ~0.5 px/ms as "landing soon"
+    const isLanding = Math.abs(STATE.scrollVelocity) < 0.5 && Math.abs(STATE.scrollVelocity) > 0.01;
+
+    if (STATE.isForcing && isLanding && !STATE.hasSwappedForCurrentIndex) {
+        // --- PREDICTIVE SWAP ---
+        // 1. Identify Target
+        const activeItem = getActiveItem();
+
+        if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+
+            // Check if we need to swap
+            if (!activeItem.textContent.startsWith(targetLetter)) {
+                // Get a new word
+                const newWord = getWordStartingWith(targetLetter, activeItem.textContent);
+
+                // SWAP IT!
+                // Note: We do this only once per landing phase to avoid flickering
+                activeItem.textContent = newWord;
+
+                // Brief highlight/debug to confirm it happened (optional, keep subtle)
+                // console.log("Swapped to:", newWord);
+
+                STATE.hasSwappedForCurrentIndex = true;
+            }
+        }
+    }
+
+    // Reset Swap State if velocity spikes (user flicked again)
+    if (Math.abs(STATE.scrollVelocity) > 1.0) {
+        STATE.hasSwappedForCurrentIndex = false;
+    }
+
+    // Debounced "Scroll End" to confirm selection
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+        // Scroll completely stopped
+        updateActiveState();
+
+        if (STATE.isForcing) {
+            const centerItem = getActiveItem();
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+
+            if (centerItem && centerItem.textContent.startsWith(targetLetter)) {
+                // Success! Move to next letter for next scroll
+                STATE.forcedIndex++;
+                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
+
+                console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
+
+                if (STATE.forcedIndex >= STATE.forcedWord.length) {
+                    STATE.isForcing = false;
+                    STATE.forcedWord = null;
+                    STATE.forcedIndex = 0;
+                    console.log("Forcing Complete.");
+                }
+            }
+        }
+    }, 150); // 150ms without scroll event = stop
 });
 
 
@@ -340,7 +358,8 @@ formElement.addEventListener('submit', (e) => {
             STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
-            STATE.forceCooldown = 10; // Start with a buffer for natural acceleration
+            STATE.forceCooldown = 0; // Not used in predictive mode
+            STATE.hasSwappedForCurrentIndex = false;
 
             const activeItem = getActiveItem();
             if (activeItem) {
@@ -354,7 +373,8 @@ formElement.addEventListener('submit', (e) => {
             // Length needed: (Word Length * 20 gaps) + buffer
             // e.g. 5 letters * 20 = 100 items. 
             // We load a massive chunk to ensure seamless scrolling
-            appendWords(Math.max(BATCH_SIZE, word.length * 25));
+            // Fill the list with random noise
+            appendWords(Math.max(BATCH_SIZE, 100));
 
             inputElement.value = '';
             lengthIndicator.textContent = '(0)';
