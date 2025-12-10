@@ -14,38 +14,39 @@
     --accent-color: #ffffff;
 }
 
-* {
-    box-sizing: border-box;
+/* Global horizontal scroll prevention */
+html,
+body {
+    width: 100%;
+    height: 100%;
     margin: 0;
     padding: 0;
-    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
+    /* Lock everything */
+    position: fixed;
+    /* Prevent rubber banding on iOS */
+    touch-action: pan-y;
+    /* DISALLOW horizontal swipes/zooms at browser level */
+    overscroll-behavior: none;
+    /* Prevent bounce effects globally */
 }
 
-html {
-    overflow-x: hidden;
-    width: 100vw;
+/* Ensure no element can trigger horizontal scroll */
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    max-width: 100%;
+    /* Prevent accidental wide elements */
 }
 
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-family: var(--font-main);
-    height: 100dvh;
-    width: 100vw;
-    overflow: hidden;
-    /* Already prevents scroll, but x-hidden makes it explicit globally */
-    overflow-x: hidden;
-    /* Prevent body scroll, only list scrolls */
     transition: background-color 0.3s, color 0.3s;
     display: flex;
     justify-content: center;
     align-items: center;
-    touch-action: pan-y;
-    /* Disable horizontal swipe/zoom */
-    overscroll-behavior-x: none;
-    /* Prevent browser back/forward swipe */
-    position: fixed;
-    /* Lock body in place */
     inset: 0;
 }
 
