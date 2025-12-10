@@ -287,84 +287,83 @@ listElement.addEventListener('scroll', () => {
                     }
                 });
             }
-        });
         }
     }
 
-// Debounced "Scroll End" to confirm selection
-clearTimeout(scrollTimeout);
-scrollTimeout = setTimeout(() => {
-    // Scroll completely stopped
-    // Ensure snap is active
-    listElement.classList.remove('is-spinning');
+    // Debounced "Scroll End" to confirm selection
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+        // Scroll completely stopped
+        // Ensure snap is active
+        listElement.classList.remove('is-spinning');
 
-    updateActiveState();
+        updateActiveState();
 
-    if (STATE.isForcing) {
-        // New: Countdown Logic
-        if (STATE.forceCountdown !== null) {
-            if (STATE.forceCountdown > 0) {
-                STATE.forceCountdown--;
-                console.log(`Countdown: ${STATE.forceCountdown}`);
-                return; // Consume this turn as a random draw
-            }
-
-            if (STATE.forceCountdown === 0) {
-                // TIME TO STRIKE
-                const centerItem = getActiveItem();
-                if (centerItem && STATE.targetWordForCountdown) {
-                    centerItem.textContent = STATE.targetWordForCountdown;
-                    centerItem.classList.add('active'); // Ensure highlight
-                    console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
-
-                    // Disable forcing immediately (One-shot)
-                    STATE.isForcing = false;
-                    STATE.forceCountdown = null;
-                    STATE.targetWordForCountdown = null;
-                    STATE.forcedWord = null; // Clear standard forcing too just in case
+        if (STATE.isForcing) {
+            // New: Countdown Logic
+            if (STATE.forceCountdown !== null) {
+                if (STATE.forceCountdown > 0) {
+                    STATE.forceCountdown--;
+                    console.log(`Countdown: ${STATE.forceCountdown}`);
+                    return; // Consume this turn as a random draw
                 }
-                return; // Skip standard forcing logic
+
+                if (STATE.forceCountdown === 0) {
+                    // TIME TO STRIKE
+                    const centerItem = getActiveItem();
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.forceCountdown = null;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null; // Clear standard forcing too just in case
+                    }
+                    return; // Skip standard forcing logic
+                }
+            }
+
+
+            const centerItem = getActiveItem();
+            // Skip standard forcing if we are in countdown mode (and not at 0 yet)
+            if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
+
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+            const targetIndex = (STATE.forcedRank || 1) - 1;
+
+            // Check success
+            // Force-Update on Stop: If we somehow missed the swap during slowdown,
+            // we do a final "glitch" swap here to enforce the rule.
+            if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
+                console.log("Failsafe Swap Triggered");
+                const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
+                centerItem.textContent = fixedWord;
+            }
+
+            // Verify again after potential fix
+            if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
+                // Success! Move to next letter for next scroll
+                STATE.forcedIndex++;
+                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
+
+                // Cleanup marks for the next round
+                listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
+
+                console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
+
+                if (STATE.forcedIndex >= STATE.forcedWord.length) {
+                    STATE.isForcing = false;
+                    STATE.forcedWord = null;
+                    STATE.forcedIndex = 0;
+                    STATE.forcedRank = 1; // Reset
+                    console.log("Forcing Complete.");
+                }
             }
         }
-
-
-        const centerItem = getActiveItem();
-        // Skip standard forcing if we are in countdown mode (and not at 0 yet)
-        if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
-
-        const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-        const targetIndex = (STATE.forcedRank || 1) - 1;
-
-        // Check success
-        // Force-Update on Stop: If we somehow missed the swap during slowdown,
-        // we do a final "glitch" swap here to enforce the rule.
-        if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
-            console.log("Failsafe Swap Triggered");
-            const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
-            centerItem.textContent = fixedWord;
-        }
-
-        // Verify again after potential fix
-        if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
-            // Success! Move to next letter for next scroll
-            STATE.forcedIndex++;
-            STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
-
-            // Cleanup marks for the next round
-            listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
-
-            console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
-
-            if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                STATE.isForcing = false;
-                STATE.forcedWord = null;
-                STATE.forcedIndex = 0;
-                STATE.forcedRank = 1; // Reset
-                console.log("Forcing Complete.");
-            }
-        }
-    }
-}, 150); // 150ms without scroll event = stop
+    }, 150); // 150ms without scroll event = stop
 });
 
 
