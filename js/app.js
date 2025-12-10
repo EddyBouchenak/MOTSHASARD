@@ -187,15 +187,15 @@ listElement.addEventListener('scroll', () => {
     // Low velocity = "Landing" mode (snap enabled via CSS removal)
 
     const absVelocity = Math.abs(STATE.scrollVelocity); // PHYSICS THRESHOLD (Lowered for Mobile Momentum)
-    // Was 3.5, now 1.0. This ensures any real swipe disables snapping.
-    if (absVelocity > 1.0) {
+
+    // Tweak: Lower threshold to make it feel more "slippery" / "roulette-like"
+    if (absVelocity > 0.5) { // Was 1.0, lowered for easier spin on mobile
         // Fast spin!
         if (!listElement.classList.contains('is-spinning')) {
             listElement.classList.add('is-spinning');
         }
     } else if (absVelocity < 0.1) {
-        // Only re-enable snap when almost stopped (was 0.5)
-        // Lowering to 0.1 allows the scroll to glide freely until the very last moment.
+        // Only re-enable snap when almost stopped
         // Slow enough to snap
         if (listElement.classList.contains('is-spinning')) {
             listElement.classList.remove('is-spinning');
@@ -426,18 +426,26 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
 
     triggerEl.addEventListener('click', (e) => {
         e.preventDefault();
-        clickCount++;
-        if (clickTimer) clearTimeout(clickTimer);
+        // Single click logic optional, avoiding conflict with dblclick
+    });
 
-        clickTimer = setTimeout(() => {
-            clickCount = 0;
-        }, 400);
+    // Double Click / Double Tap Support
+    triggerEl.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        openModal();
+    });
 
-        if (clickCount === 3) {
-            modalEl.showModal();
-            inputEl.focus();
-            clickCount = 0;
+    // For Better Mobile Double Tap Support (if dblclick is slow)
+    let lastTap = 0;
+    triggerEl.addEventListener('touchend', (e) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 500 && tapLength > 0) {
+            e.preventDefault();
+            openModal();
         }
+        lastTap = currentTime;
+        cancelLongPress(); // Also cancels long press if it was started
     });
 
     triggerEl.addEventListener('mousedown', startLongPress);
@@ -452,13 +460,20 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
 
     function startLongPress() {
         isPressing = true;
+        // 1.5 Seconds for Long Press
         longPressTimer = setTimeout(() => {
             if (isPressing) {
-                modalEl.showModal();
-                inputEl.focus();
+                openModal();
                 isPressing = false;
+                // Vibrate if supported
+                if (navigator.vibrate) navigator.vibrate(50);
             }
         }, 1500);
+    }
+
+    function openModal() {
+        modalEl.showModal();
+        inputEl.focus();
     }
 
     function cancelLongPress() {

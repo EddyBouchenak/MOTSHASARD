@@ -23,11 +23,16 @@ body {
     padding: 0;
     overflow: hidden;
     /* Lock everything */
+    /* Lock everything */
     position: fixed;
     /* Prevent rubber banding on iOS */
     touch-action: pan-y;
     /* DISALLOW horizontal swipes/zooms at browser level */
-    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    /* Specific horizontal lock */
+    overscroll-behavior-y: none;
+    overflow-x: hidden;
+    /* Hard lock */
     /* Prevent bounce effects globally */
 }
 
@@ -178,9 +183,9 @@ dialog {
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    font-family: var(--font-main);
+    /* Change font for hidden windows as requested */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 
 dialog::backdrop {
@@ -206,7 +211,8 @@ dialog h2 {
     border: none;
     border-bottom: 2px solid var(--accent-color);
     color: var(--text-color);
-    font-family: var(--font-main);
+    /* Use inherit to keep the new system font */
+    font-family: inherit;
     font-size: 1.2rem;
     padding: 5px;
     width: 200px;
@@ -219,7 +225,7 @@ dialog h2 {
     background: var(--accent-color);
     color: var(--bg-color);
     border: none;
-    font-family: var(--font-main);
+    font-family: inherit;
     font-weight: bold;
     font-size: 1.1rem;
     cursor: pointer;
