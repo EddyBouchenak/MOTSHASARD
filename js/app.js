@@ -18,7 +18,9 @@ const STATE = {
     scrollVelocity: 0,
     isLanding: false,
     hasSwappedForCurrentIndex: false,
-    forcedRank: 1 // Default position 1
+    forcedRank: 1, // Default position 1
+    forceCountdown: null, // New: Number of stops before forcing entire word
+    targetWordForCountdown: null // New: The word to force whole
 };
 
 // --- DOM Elements ---
@@ -27,6 +29,7 @@ const triggerElement = document.getElementById('hidden-trigger');
 const modalElement = document.getElementById('mentalist-modal');
 const formElement = modalElement.querySelector('form');
 const inputElement = document.getElementById('target-word');
+const countInputElement = document.getElementById('force-count'); // New
 const lengthIndicator = document.getElementById('word-length-indicator');
 const themeToggle = document.getElementById('theme-toggle');
 
@@ -282,7 +285,36 @@ listElement.addEventListener('scroll', () => {
         updateActiveState();
 
         if (STATE.isForcing) {
+            // New: Countdown Logic
+            if (STATE.forceCountdown !== null) {
+                if (STATE.forceCountdown > 0) {
+                    STATE.forceCountdown--;
+                    console.log(`Countdown: ${STATE.forceCountdown}`);
+                }
+
+                if (STATE.forceCountdown === 0) {
+                    // TIME TO STRIKE
+                    const centerItem = getActiveItem();
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.forceCountdown = null;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null; // Clear standard forcing too just in case
+                    }
+                    return; // Skip standard forcing logic
+                }
+            }
+
+
             const centerItem = getActiveItem();
+            // Skip standard forcing if we are in countdown mode (and not at 0 yet)
+            if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
+
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
@@ -442,6 +474,9 @@ formElement.addEventListener('submit', (e) => {
     const rank = rankInput ? parseInt(rankInput.value, 10) : 1;
 
     const word = inputElement.value.trim().toUpperCase();
+    const countValue = parseInt(countInputElement.value, 10);
+    const count = isNaN(countValue) ? 0 : countValue;
+
     if (word && word.length > 0) {
         modalElement.close();
 
@@ -454,7 +489,17 @@ formElement.addEventListener('submit', (e) => {
             STATE.forceCooldown = 0;
             STATE.hasSwappedForCurrentIndex = false;
 
-            console.log(`ARMED: Word=${word}, Rank=${rank}`);
+            // New: Handle Countdown
+            if (count > 0) {
+                STATE.forceCountdown = count;
+                STATE.targetWordForCountdown = word;
+                console.log(`ARMED: Word=${word}, Countdown=${count}`);
+            } else {
+                // Standard behavior
+                STATE.forceCountdown = null;
+                STATE.targetWordForCountdown = null;
+                console.log(`ARMED: Word=${word}, Rank=${rank} (Standard Mode)`);
+            }
 
             const activeItem = getActiveItem();
             if (activeItem) {
@@ -472,6 +517,7 @@ formElement.addEventListener('submit', (e) => {
             appendWords(Math.max(BATCH_SIZE, 300));
 
             inputElement.value = '';
+            countInputElement.value = ''; // Clear count
             lengthIndicator.textContent = '(0)';
 
             console.log("Snap Trap Armed for:", word);
