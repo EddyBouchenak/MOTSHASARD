@@ -174,14 +174,16 @@ listElement.addEventListener('scroll', () => {
     // High velocity = "Spinning" mode (no snap)
     // Low velocity = "Landing" mode (snap enabled via CSS removal)
 
-    const absVelocity = Math.abs(STATE.scrollVelocity);
-
-    if (absVelocity > 3.5) {
+    const absVelocity = Math.abs(STATE.scrollVelocity); // PHYSICS THRESHOLD (Lowered for Mobile Momentum)
+    // Was 3.5, now 1.0. This ensures any real swipe disables snapping.
+    if (absVelocity > 1.0) {
         // Fast spin!
         if (!listElement.classList.contains('is-spinning')) {
             listElement.classList.add('is-spinning');
         }
-    } else if (absVelocity < 1.0) {
+    } else if (absVelocity < 0.1) {
+        // Only re-enable snap when almost stopped (was 0.5)
+        // Lowering to 0.1 allows the scroll to glide freely until the very last moment.
         // Slow enough to snap
         if (listElement.classList.contains('is-spinning')) {
             listElement.classList.remove('is-spinning');
@@ -230,7 +232,7 @@ listElement.addEventListener('scroll', () => {
             // Look ahead 1 to 5 items to create a seamless buffer.
             let nextCandidate = activeItem;
             const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-            const lookAheadCount = 5; // How many words ahead to fix?
+            const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
 
             for (let i = 0; i < lookAheadCount; i++) {
                 if (direction > 0) {
