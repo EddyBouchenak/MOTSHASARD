@@ -24,13 +24,22 @@ const STATE = {
 };
 
 // --- DOM Elements ---
+// --- DOM Elements ---
 const listElement = document.getElementById('word-list');
-const triggerElement = document.getElementById('hidden-trigger');
-const modalElement = document.getElementById('mentalist-modal');
-const formElement = modalElement.querySelector('form');
-const inputElement = document.getElementById('target-word');
-const countInputElement = document.getElementById('force-count'); // New
-const lengthIndicator = document.getElementById('word-length-indicator');
+const triggerRight = document.getElementById('hidden-trigger');
+const triggerLeft = document.getElementById('backdoor-trigger'); // New
+const modalRight = document.getElementById('mentalist-modal');
+const modalLeft = document.getElementById('backdoor-modal'); // New
+const formRight = modalRight.querySelector('form');
+const formLeft = modalLeft.querySelector('form'); // New
+
+const inputRight = document.getElementById('target-word');
+const indicatorRight = document.getElementById('word-length-indicator');
+
+const inputLeft = document.getElementById('backdoor-word');
+const inputLeftCount = document.getElementById('backdoor-count');
+const indicatorLeft = document.getElementById('backdoor-length');
+
 const themeToggle = document.getElementById('theme-toggle');
 
 // --- Configuration ---
@@ -409,76 +418,77 @@ function init() {
 
 // --- Trigger & Modal Logic ---
 
-let clickCount = 0;
-let clickTimer = null;
-let longPressTimer = null;
-let isPressing = false;
+function setupTrigger(triggerEl, modalEl, inputEl) {
+    let clickCount = 0;
+    let clickTimer = null;
+    let longPressTimer = null;
+    let isPressing = false;
 
-triggerElement.addEventListener('click', (e) => {
-    e.preventDefault();
-    clickCount++;
-    if (clickTimer) clearTimeout(clickTimer);
+    triggerEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        clickCount++;
+        if (clickTimer) clearTimeout(clickTimer);
 
-    clickTimer = setTimeout(() => {
-        clickCount = 0;
-    }, 400);
+        clickTimer = setTimeout(() => {
+            clickCount = 0;
+        }, 400);
 
-    if (clickCount === 3) {
-        openModal();
-        clickCount = 0;
-    }
-});
-
-triggerElement.addEventListener('mousedown', startLongPress);
-triggerElement.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    startLongPress();
-}, { passive: false });
-
-triggerElement.addEventListener('mouseup', cancelLongPress);
-triggerElement.addEventListener('mouseleave', cancelLongPress);
-triggerElement.addEventListener('touchend', cancelLongPress);
-
-function startLongPress() {
-    isPressing = true;
-    longPressTimer = setTimeout(() => {
-        if (isPressing) {
-            openModal();
-            isPressing = false;
+        if (clickCount === 3) {
+            modalEl.showModal();
+            inputEl.focus();
+            clickCount = 0;
         }
-    }, 1500);
+    });
+
+    triggerEl.addEventListener('mousedown', startLongPress);
+    triggerEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startLongPress();
+    }, { passive: false });
+
+    triggerEl.addEventListener('mouseup', cancelLongPress);
+    triggerEl.addEventListener('mouseleave', cancelLongPress);
+    triggerEl.addEventListener('touchend', cancelLongPress);
+
+    function startLongPress() {
+        isPressing = true;
+        longPressTimer = setTimeout(() => {
+            if (isPressing) {
+                modalEl.showModal();
+                inputEl.focus();
+                isPressing = false;
+            }
+        }, 1500);
+    }
+
+    function cancelLongPress() {
+        isPressing = false;
+        if (longPressTimer) clearTimeout(longPressTimer);
+    }
 }
 
-function cancelLongPress() {
-    isPressing = false;
-    if (longPressTimer) clearTimeout(longPressTimer);
-}
+// Setup Both Triggers
+setupTrigger(triggerRight, modalRight, inputRight);
+setupTrigger(triggerLeft, modalLeft, inputLeft);
 
-function openModal() {
-    modalElement.showModal();
-    // Auto-focus input
-    inputElement.focus();
-}
+// Modal Forms Logic
 
-// Modal Form Handling
-inputElement.addEventListener('input', (e) => {
-    const word = e.target.value.trim();
-    lengthIndicator.textContent = `(${word.length})`;
+// 1. Right Modal (Original - Rank Forcing)
+inputRight.addEventListener('input', (e) => {
+    indicatorRight.textContent = `(${e.target.value.trim().length})`;
 });
 
-formElement.addEventListener('submit', (e) => {
+formRight.addEventListener('submit', (e) => {
     e.preventDefault();
 
     // Read Rank
-    const rankInput = formElement.querySelector('input[name="rank"]:checked');
+    const rankInput = formRight.querySelector('input[name="rank"]:checked');
     const rank = rankInput ? parseInt(rankInput.value, 10) : 1;
 
-    const word = inputElement.value.trim().toUpperCase();
-    const countValue = parseInt(countInputElement.value, 10);
-    const count = isNaN(countValue) ? 0 : countValue;
+    const word = inputRight.value.trim().toUpperCase();
 
     if (word && word.length > 0) {
-        modalElement.close();
+        modalRight.close();
 
         // Wait for keyboard to dismiss and layout to stabilize
         setTimeout(() => {
@@ -489,45 +499,71 @@ formElement.addEventListener('submit', (e) => {
             STATE.forceCooldown = 0;
             STATE.hasSwappedForCurrentIndex = false;
 
-            // New: Handle Countdown
-            if (count > 0) {
-                STATE.forceCountdown = count;
-                STATE.targetWordForCountdown = word;
-                console.log(`ARMED: Word=${word}, Countdown=${count}`);
-            } else {
-                // Standard behavior
-                STATE.forceCountdown = null;
-                STATE.targetWordForCountdown = null;
-                console.log(`ARMED: Word=${word}, Rank=${rank} (Standard Mode)`);
-            }
+            // Standard behavior (No Countdown here)
+            STATE.forceCountdown = null;
+            STATE.targetWordForCountdown = null;
 
-            const activeItem = getActiveItem();
-            if (activeItem) {
-                // Clear everything after active item to ensure clean slate
-                while (activeItem.nextElementSibling) {
-                    activeItem.nextElementSibling.remove();
-                }
-            }
+            console.log(`ARMED RIGHT: Word=${word}, Rank=${rank}`);
 
-            // Generate the Trap Sequence
-            // Length needed: (Word Length * 20 gaps) + buffer
-            // e.g. 5 letters * 20 = 100 items. 
-            // We load a massive chunk to ensure seamless scrolling
-            // Fill the list with random noise
-            appendWords(Math.max(BATCH_SIZE, 300));
-
-            inputElement.value = '';
-            countInputElement.value = ''; // Clear count
-            lengthIndicator.textContent = '(0)';
-
-            console.log("Snap Trap Armed for:", word);
-            updateActiveState();
+            cleanAndArm(word); // Helper function
         }, 100);
 
     } else {
-        modalElement.close();
+        modalRight.close();
     }
 });
+
+// 2. Left Modal (Backdoor - Countdown Forcing)
+inputLeft.addEventListener('input', (e) => {
+    indicatorLeft.textContent = `(${e.target.value.trim().length})`;
+});
+
+formLeft.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const word = inputLeft.value.trim().toUpperCase();
+    const countValue = parseInt(inputLeftCount.value, 10);
+    const count = isNaN(countValue) ? 0 : countValue;
+
+    if (word && word.length > 0) {
+        modalLeft.close();
+
+        setTimeout(() => {
+            STATE.forcedWord = word; // We set this loosely, but main logic uses targetWordForCountdown
+            STATE.forcedIndex = 0;
+            STATE.isForcing = true;
+
+            // Countdown setup
+            STATE.forceCountdown = count;
+            STATE.targetWordForCountdown = word;
+
+            console.log(`ARMED LEFT: Word=${word}, Countdown=${count}`);
+
+            cleanAndArm(word);
+        }, 100);
+    } else {
+        modalLeft.close();
+    }
+});
+
+function cleanAndArm(word) {
+    const activeItem = getActiveItem();
+    if (activeItem) {
+        while (activeItem.nextElementSibling) {
+            activeItem.nextElementSibling.remove();
+        }
+    }
+    appendWords(Math.max(BATCH_SIZE, 300));
+
+    inputRight.value = '';
+    indicatorRight.textContent = '(0)';
+
+    inputLeft.value = '';
+    inputLeftCount.value = '';
+    indicatorLeft.textContent = '(0)';
+
+    updateActiveState();
+}
 
 
 // --- Theme Logic ---

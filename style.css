@@ -144,11 +144,23 @@ main {
     letter-spacing: 2px;
 }
 
-/* Hidden Trigger */
+/* Hidden Trigger Right (Original) */
 #hidden-trigger {
     position: fixed;
     bottom: 0;
     right: 0;
+    width: 60px;
+    height: 60px;
+    background: transparent;
+    /* Invisible */
+    z-index: 999;
+}
+
+/* Hidden Trigger Left (Backdoor) */
+#backdoor-trigger {
+    position: fixed;
+    bottom: 0;
+    left: 0;
     width: 60px;
     height: 60px;
     background: transparent;

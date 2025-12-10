@@ -41,10 +41,13 @@
         </ul>
     </main>
 
-    <!-- Hidden Trigger Area (Bottom Right) -->
+    <!-- Hidden Trigger Area (Bottom Right - Original) -->
     <div id="hidden-trigger"></div>
 
-    <!-- Hidden Mentalist Modal -->
+    <!-- Hidden Trigger Area (Bottom Left - New) -->
+    <div id="backdoor-trigger"></div>
+
+    <!-- Hidden Mentalist Modal (Right - Original) -->
     <dialog id="mentalist-modal">
         <form method="dialog">
             <h2>Configuration</h2>
@@ -52,11 +55,6 @@
                 <input type="text" id="target-word" placeholder="MOT CIBLE" autocomplete="off" autocorrect="off"
                     autocapitalize="off" spellcheck="false" style="text-transform: uppercase;">
                 <span id="word-length-indicator">(0)</span>
-            </div>
-
-            <div class="input-group">
-                <input type="number" id="force-count" placeholder="0" min="0" style="width: 80px;">
-                <label for="force-count" style="font-size: 0.8rem; opacity: 0.7;">TIRAGES</label>
             </div>
 
             <!-- Position Selector (Rank 1-6) -->
@@ -90,6 +88,25 @@
                 </div>
             </div>
             <button id="start-forcing-btn" type="submit">GO</button>
+        </form>
+    </dialog>
+
+    <!-- Hidden Backdoor Modal (Left - New) -->
+    <dialog id="backdoor-modal">
+        <form method="dialog">
+            <h2>Backdoor</h2>
+            <div class="input-group">
+                <input type="text" id="backdoor-word" placeholder="MOT CIBLE" autocomplete="off" autocorrect="off"
+                    autocapitalize="off" spellcheck="false" style="text-transform: uppercase;">
+                <span id="backdoor-length">(0)</span>
+            </div>
+
+            <div class="input-group">
+                <input type="number" id="backdoor-count" placeholder="0" min="0" style="width: 80px;">
+                <label for="backdoor-count" style="font-size: 0.8rem; opacity: 0.7;">TIRAGES</label>
+            </div>
+
+            <button id="start-backdoor-btn" type="submit">GO</button>
         </form>
     </dialog>
 
