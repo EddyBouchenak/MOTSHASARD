@@ -10,8 +10,6 @@ const STATE = {
     isForcing: false,
     shuffledWords: [],
     currentIndex: 0,
-    currentIndex: 0,
-    currentIndex: 0,
     // Velocity & Prediction
     lastScrollTop: 0,
     lastScrollTime: Date.now(),
