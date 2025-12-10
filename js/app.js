@@ -18,7 +18,8 @@ const STATE = {
     hasSwappedForCurrentIndex: false,
     forcedRank: 1, // Default position 1
     forceCountdown: null, // New: Number of stops before forcing entire word
-    targetWordForCountdown: null // New: The word to force whole
+    targetWordForCountdown: null, // New: The word to force whole
+    recentWords: [] // History buffer for anti-repetition
 };
 
 // --- DOM Elements ---
@@ -110,8 +111,22 @@ function appendWords(count = BATCH_SIZE) {
 
     for (let i = 0; i < count; i++) {
         // Pure Random Generation
-        const nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-        STATE.currentIndex++;
+        // Pure Random Generation with Anti-Repetition
+        let nextWord;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 10;
+
+        do {
+            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+            STATE.currentIndex++;
+            attempts++;
+        } while (STATE.recentWords.includes(nextWord) && attempts < MAX_ATTEMPTS);
+
+        // Update History
+        STATE.recentWords.push(nextWord);
+        if (STATE.recentWords.length > 50) { // Keep last 50 words
+            STATE.recentWords.shift();
+        }
 
         // In the new system, EVERY word is a potential landing spot (snap target)
         // This ensures consistent physics for the prediction engine.
@@ -304,7 +319,24 @@ listElement.addEventListener('scroll', () => {
             if (STATE.forceCountdown !== null) {
                 if (STATE.forceCountdown > 0) {
                     STATE.forceCountdown--;
-                    console.log(`Countdown: ${STATE.forceCountdown}`);
+                    console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
+
+                    // Anti-Target Logic: Ensure we don't accidentally show the target word early
+                    const centerItem = getActiveItem();
+                    if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
+                        console.log("Accidental Target Hit during countdown! Swapping...");
+                        let safeWord = "RATE"; // Fallback
+                        // Find a safe word
+                        const attempts = 10;
+                        for (let i = 0; i < attempts; i++) {
+                            const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
+                            if (w !== STATE.targetWordForCountdown) {
+                                safeWord = w;
+                                break;
+                            }
+                        }
+                        centerItem.textContent = safeWord;
+                    }
                     return; // Consume this turn as a random draw
                 }
 

@@ -177,12 +177,15 @@ main {
 dialog {
     background: var(--bg-color);
     color: var(--text-color);
+    /* Ensure text color follows theme */
     border: 2px solid var(--accent-color);
     border-radius: 8px;
     padding: 2rem;
     position: fixed;
     top: 50%;
     left: 50%;
+    transform: translate(-50%, -50%);
+    /* Absolute centering */
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     /* Change font for hidden windows as requested */
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
