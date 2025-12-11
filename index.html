@@ -9,14 +9,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=Space+Mono:wght@400;700&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/locomotive-scroll@4.1.4/dist/locomotive-scroll.min.css">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/locomotive-scroll@4.1.4/dist/locomotive-scroll.min.js"></script>
 </head>
 
 <body>
 
     <!-- Theme Toggle -->
-    <button id="theme-toggle" aria-label="Basculer le thème">
+    <button id="theme-toggle" aria-label="Toggle Theme">
         <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
@@ -35,10 +37,10 @@
         </svg>
     </button>
 
-    <main>
+    <main data-scroll-container>
         <!-- Infinite Scroll List -->
         <ul id="word-list" class="word-list">
-            <!-- Words will be injected here by JS -->
+            <!-- Words will be injected here -->
         </ul>
     </main>
 

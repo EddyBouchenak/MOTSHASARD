@@ -289,8 +289,33 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
+/* Locomotive Scroll Setup */
+
+/* Hide native scrollbar (Locomotive might add custom one, we want none) */
+.c-scrollbar {
+    display: none !important;
+}
+
+/*! locomotive-scroll v4.1.4 | MIT License | https://github.com/locomotivemtl/locomotive-scroll */
+html.has-scroll-smooth {
+    overflow: hidden;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+}
+
+html.has-scroll-smooth body {
+    overflow: hidden;
+}
+
 /* GSAP Controlled Scroll - Native Scroll Disabled */
 .word-list {
+    /* List styles mostly preserved */
+    /* overflow: hidden handled by Locomotive parent usually, but good to keep clean */
+    min-height: 100vh;
+    /* Ensure it takes space */
     overflow: hidden;
     /* Disable native scroll */
     touch-action: none;

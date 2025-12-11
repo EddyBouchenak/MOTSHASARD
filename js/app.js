@@ -19,7 +19,11 @@ const STATE = {
     forcedRank: 1, // Default position 1
     forceCountdown: null, // New: Number of stops before forcing entire word
     targetWordForCountdown: null, // New: The word to force whole
-    recentWords: [] // History buffer for anti-repetition
+    recentWords: [], // History buffer for anti-repetition
+
+    // Locomotive Props
+    scroll: null, // Instance
+    itemHeight: 100
 };
 
 // --- DOM Elements ---
@@ -158,7 +162,7 @@ function appendWords(count = BATCH_SIZE) {
     }
 
     listElement.appendChild(fragment);
-    updateInfiniteScrollObserver();
+    // updateInfiniteScrollObserver(); // Removed, handled by Locomotive Scroll
 }
 
 // --- Observers & Scroll Logic ---
@@ -188,250 +192,28 @@ function getActiveItem() {
     return activeItem;
 }
 
-// Update UI based on scroll
-function updateActiveState() {
-    const centerItem = getActiveItem();
-
-    const currentActive = listElement.querySelector('.word-item.active');
-    if (currentActive && currentActive !== centerItem) {
-        currentActive.classList.remove('active');
-    }
-
-    if (centerItem && !centerItem.classList.contains('active')) {
-        centerItem.classList.add('active');
-    }
-}
-
-// Scroll Handler
-// Scroll Handler with Prediction
-let scrollTimeout;
-listElement.addEventListener('scroll', () => {
-    const now = Date.now();
-    const currentScrollTop = listElement.scrollTop;
-
-    // Calculate Velocity (pixels per ms)
-    const dt = now - STATE.lastScrollTime;
-    if (dt > 0) {
-        const dy = currentScrollTop - STATE.lastScrollTop;
-        STATE.scrollVelocity = dy / dt;
-    }
-
-    // Velocity & Physics
-    // Custom physics (is-spinning toggling) REMOVED in favor of Native CSS Scroll Snap.
-    // We still calculate velocity for Forcing prediction below, but we no longer manage snap classes manually.
-
-    const absVelocity = Math.abs(STATE.scrollVelocity);
-
-    // Legacy "Spinning" logic block removed.
-    // Native Inertia handles the "slippery" feel now.
-
-    // --- FORCING LOGIC REFINED: ANTICIPATION ---
-    // Goal: Pre-load the "Tube" with valid words BEFORE they hit the center.
-    // This removes the "Visual Glitch" of the center word changing.
-
-    // Always predict on Landing (Low Speed) to ensure the final destination is valid.
-    // Also predict during High Speed (Spinning) to populate the list.
-    // AND predict during Medium Speed, but TARGETING COMING ITEMS, not the active one.
-
-    if (STATE.isForcing) {
-        // If we are in Countdown Mode, we DO NOT force letters in the tube.
-        // We want pure random words until the countdown finishes.
-        if (STATE.forceCountdown !== null) {
-            // Do nothing during scroll for countdown mode.
-            // The forcing happens ONLY on the final stop.
-        } else {
-            // Standard Rank/Letter Forcing (Tube Correction)
-            // We always run this correction loop, but we target different items based on physics.
-            const activeItem = getActiveItem();
-
-            if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
-                const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-                const targetIndex = (STATE.forcedRank || 1) - 1;
-
-                // Strategy:
-                // 1. Identify "Incoming" items based on direction.
-                //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
-                //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
-                // 2. Modify "Incoming" items aggressively.
-                // 3. ONLY Modify "Active" item if:
-                //    a) We are STOPPING (cleaning up the landing).
-                //    b) We are SPINNING FAST (invisible).
-
-                // Define the "Correction Zone"
-                let itemsToCorrect = [];
-
-                // LOGIC THRESHOLD (Kept High to avoid visible glitches)
-                const isFast = absVelocity > 3.0; // Still high for invisible swaps
-                const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
-
-                // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
-                // It is sharp enough to be read, so changing it looks like a glitch.
-                if (isFast || isStopping) {
-                    itemsToCorrect.push(activeItem);
-                }
-
-                // B. The Future Items (Anticipation)
-                // Look ahead 1 to 5 items to create a seamless buffer.
-                let nextCandidate = activeItem;
-                const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-                const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
-
-                for (let i = 0; i < lookAheadCount; i++) {
-                    if (direction > 0) {
-                        nextCandidate = nextCandidate.nextElementSibling;
-                    } else {
-                        nextCandidate = nextCandidate.previousElementSibling;
-                    }
-
-                    if (nextCandidate) {
-                        itemsToCorrect.push(nextCandidate);
-                    } else {
-                        break;
-                    }
-                }
-
-                // Apply Correction to collected items
-                itemsToCorrect.forEach(item => {
-                    const currentWord = item.textContent;
-                    // Optimization: Don't re-read/re-write if already good
-                    // Check if it matches requirement
-                    const letterAtPos = currentWord[targetIndex];
-
-                    // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
-                    // we might still want to swap to ensure variety if needed, 
-                    // but for now, simple matching is enough.
-
-                    // Only skip if it matches the target letter.
-                    if (letterAtPos !== targetLetter) {
-                        // SWAP
-                        const newWord = getWordStartingWith(targetLetter, currentWord);
-                        item.textContent = newWord;
-                        // Mark it so we don't swap it again unnecessarily
-                        // (Though our check above handles that, the attribute might be useful for debug)
-                        item.setAttribute('data-forced', 'true');
-                    }
-                });
-            }
-        }
-    }
-
-    // Debounced "Scroll End" to confirm selection
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(() => {
-        // Scroll completely stopped
-        // Ensure snap is active (Native CSS handles this, just cleanup if needed)
-        // listElement.classList.remove('is-spinning'); // Removed
-
-        updateActiveState();
-
-        if (STATE.isForcing) {
-            // New: Countdown Logic
-            if (STATE.forceCountdown !== null) {
-                if (STATE.forceCountdown > 0) {
-                    STATE.forceCountdown--;
-                    console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
-
-                    // Anti-Target Logic: Ensure we don't accidentally show the target word early
-                    const centerItem = getActiveItem();
-                    if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
-                        console.log("Accidental Target Hit during countdown! Swapping...");
-                        let safeWord = "RATE"; // Fallback
-                        // Find a safe word
-                        const attempts = 10;
-                        for (let i = 0; i < attempts; i++) {
-                            const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
-                            if (w !== STATE.targetWordForCountdown) {
-                                safeWord = w;
-                                break;
-                            }
-                        }
-                        centerItem.textContent = safeWord;
-                    }
-                    return; // Consume this turn as a random draw
-                }
-
-                if (STATE.forceCountdown === 0) {
-                    // TIME TO STRIKE
-                    const centerItem = getActiveItem();
-                    if (centerItem && STATE.targetWordForCountdown) {
-                        centerItem.textContent = STATE.targetWordForCountdown;
-                        centerItem.classList.add('active'); // Ensure highlight
-                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
-
-                        // Disable forcing immediately (One-shot)
-                        STATE.isForcing = false;
-                        STATE.forceCountdown = null;
-                        STATE.targetWordForCountdown = null;
-                        STATE.forcedWord = null; // Clear standard forcing too just in case
-                    }
-                    return; // Skip standard forcing logic
-                }
-            }
-
-
-            const centerItem = getActiveItem();
-            // Skip standard forcing if we are in countdown mode (and not at 0 yet)
-            if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
-
-            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-            const targetIndex = (STATE.forcedRank || 1) - 1;
-
-            // Check success
-            // Force-Update on Stop: If we somehow missed the swap during slowdown,
-            // we do a final "glitch" swap here to enforce the rule.
-            if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
-                console.log("Failsafe Swap Triggered");
-                const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
-                centerItem.textContent = fixedWord;
-            }
-
-            // Verify again after potential fix
-            if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
-                // Success! Move to next letter for next scroll
-                STATE.forcedIndex++;
-                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
-
-                // Cleanup marks for the next round
-                listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
-
-                console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
-
-                if (STATE.forcedIndex >= STATE.forcedWord.length) {
-                    STATE.isForcing = false;
-                    STATE.forcedWord = null;
-                    STATE.forcedIndex = 0;
-                    STATE.forcedRank = 1; // Reset
-                    console.log("Forcing Complete.");
-                }
-            }
-        }
-    }, 150); // 150ms without scroll event = stop
-});
-
-
-// Update on resize too
-window.addEventListener('resize', updateActiveState);
+// GSAP Logic Removed
 
 
 // 2. Infinite Scroll
-const infiniteScrollObserver = new IntersectionObserver((entries) => {
-    const lastEntry = entries[0];
-    if (lastEntry.isIntersecting) {
-        infiniteScrollObserver.unobserve(lastEntry.target);
-        appendWords(BATCH_SIZE);
-    }
-}, {
-    root: listElement,
-    rootMargin: "300px" // Load well in advance
-});
+// const infiniteScrollObserver = new IntersectionObserver((entries) => { // Removed, handled by Locomotive Scroll
+//     const lastEntry = entries[0];
+//     if (lastEntry.isIntersecting) {
+//         infiniteScrollObserver.unobserve(lastEntry.target);
+//         appendWords(BATCH_SIZE);
+//     }
+// }, {
+//     root: listElement,
+//     rootMargin: "300px" // Load well in advance
+// });
 
-function updateInfiniteScrollObserver() {
-    const items = listElement.querySelectorAll('.word-item');
-    if (items.length > 0) {
-        const lastItem = items[items.length - 1];
-        infiniteScrollObserver.observe(lastItem);
-    }
-}
+// function updateInfiniteScrollObserver() { // Removed, handled by Locomotive Scroll
+//     const items = listElement.querySelectorAll('.word-item');
+//     if (items.length > 0) {
+//         const lastItem = items[items.length - 1];
+//         infiniteScrollObserver.observe(lastItem);
+//     }
+// }
 
 
 // --- Initialization ---
@@ -450,17 +232,174 @@ function init() {
     listElement.innerHTML = '';
 
     // 3. Initial Fill with Buffer
-    // We append a large batch, then scroll to the middle
     const initialCount = BATCH_SIZE * 3;
     appendWords(initialCount);
 
-    // Scroll to the middle item
-    const items = listElement.querySelectorAll('.word-item');
-    if (items.length > 0) {
-        const middleIndex = Math.floor(items.length / 2);
-        items[middleIndex].scrollIntoView({ block: 'center' });
-        // Initial active update
-        setTimeout(updateActiveState, 100);
+    STATE.itemHeight = listElement.querySelector('.word-item').offsetHeight || 100;
+
+    // Setup Locomotive Scroll
+    initLocomotiveScroll();
+
+    // Scroll to middle (approx)
+    // We can't use scrollIntoView easily with virtual scroll.
+    // Locomotive `scrollTo` works nicely.
+    // Wait for init
+    setTimeout(() => {
+        if (STATE.scroll) {
+            const middleIndex = Math.floor(initialCount / 2);
+            const targetEl = listElement.children[middleIndex];
+            if (targetEl) {
+                STATE.scroll.scrollTo(targetEl, { duration: 0, disableLerp: true });
+            }
+        }
+    }, 100);
+}
+
+// --- Locomotive Scroll Logic ---
+
+let scrollTimeout; // For detecting scroll stop
+
+function initLocomotiveScroll() {
+    STATE.scroll = new LocomotiveScroll({
+        el: document.querySelector('[data-scroll-container]'),
+        smooth: true,
+        multiplier: 1.0,
+        lerp: 0.1, // Heavy inertia
+        smartphone: {
+            smooth: true
+        },
+        tablet: {
+            smooth: true
+        }
+    });
+
+    // Event Listener for Scroll
+    STATE.scroll.on('scroll', (args) => {
+        // args.scroll.y is current scroll position
+        const currentY = args.scroll.y;
+
+        // 1. Logic Loop (Velocity, Forcing Prediction)
+        handleScrollLogic(currentY, args.limit.y);
+
+        // 2. Active State Update
+        updateActiveStateLocomotive(currentY);
+
+        // 3. Infinite Scroll Check
+        if (args.limit.y - currentY < 500) { // Near bottom
+            appendWords(BATCH_SIZE);
+            STATE.scroll.update(); // Important: Tell LS content changed
+        }
+
+    });
+}
+
+function updateActiveStateLocomotive(scrollY) {
+    // Calculate center relative to viewport
+    // Viewport Center = window.innerHeight / 2
+    // Item at Center => Item.top - scrollY + (Item.height/2) ~= Viewport Center
+    // Item.top (absolute in container) ~= scrollY + Viewport Center - (Item.height/2)
+
+    const viewportCenter = window.innerHeight / 2;
+    // const absoluteCenterY = scrollY + viewportCenter; // This logic assumes top:0 alignment
+
+    // Simplest approach: "Geometric" check using DOM rects on reduced set?
+    // Or Math?
+    // Math is faster.
+    // items are stacked. 
+    // Index = (scrollY + ViewportCenter) / itemHeight? 
+    // We need to account for padding-top if any.
+    // style.css has padding-top: calc(50dvh - itemHeight/2)
+    // So 0 scroll = Index 0 is at center.
+    // Therefore: Index = scrollY / itemHeight.
+
+    const aproxIndex = Math.round(scrollY / STATE.itemHeight);
+    const items = listElement.children;
+    const centerItem = items[aproxIndex]; // Safe enough?
+
+    if (!centerItem) return;
+
+    const currentActive = listElement.querySelector('.word-item.active');
+    if (currentActive && currentActive !== centerItem) {
+        currentActive.classList.remove('active');
+    }
+    if (!centerItem.classList.contains('active')) {
+        centerItem.classList.add('active');
+    }
+}
+
+
+function handleScrollLogic(currentY, limitY) {
+    // Detect Stop for Forcing
+    // Locomotive doesn't give explicit "stop" event easily without polling speed.
+    // But we can check speed from args? args.speed?
+    // Or custom check.
+
+    // Use a debouncer.
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+        // STOPPED
+
+        // Forcing Check
+        if (STATE.isForcing) {
+
+            if (STATE.forceCountdown !== null) {
+                if (STATE.forceCountdown > 0) {
+                    // Random stop occurred.
+                    STATE.forceCountdown--;
+                    console.log(`Stop detected. Countdown: ${STATE.forceCountdown}`);
+                } else if (STATE.forceCountdown === 0) {
+                    // TARGET TURN.
+                    // We should be forcing NOW.
+                    // Trigger the ScrollTo.
+                    triggerForceScroll();
+                }
+            }
+        }
+
+    }, 150);
+}
+
+function triggerForceScroll() {
+    // We want to scroll to a target word.
+    // First, verify we have it or generate it.
+
+    // We need to pick a spot "ahead" or just snap the current spot to be the target?
+    // "Roulette" implies we spin, then land.
+    // If we already stopped (countdown=0), we might have missed the visual "spin".
+    // Wait... 
+    // Logic V3 was "N Spins". 
+    // If the user scrolls, pauses, scrolls, pauses... 
+    // The N-th pause triggers the move.
+
+    // Problem: If they pause naturally, "Count 0" happens.
+    // We need to ensure the target is visible.
+    // Strategy: 
+    // When "Count 0" is reached (Stop detected), we:
+    // 1. Identify current center item.
+    // 2. Change it to Target Word (Sneaky).
+    // 3. Ensure centered perfectly.
+
+    const activeItem = listElement.querySelector('.word-item.active');
+    if (activeItem && STATE.targetWordForCountdown) {
+        // Inject
+        activeItem.textContent = STATE.targetWordForCountdown;
+
+        // Correct Alignment (Snap)
+        STATE.scroll.scrollTo(activeItem, {
+            offset: 0, // Should be centered if configured/calculated right? 
+            // Actually, scrollTo(target) puts target at TOP usually unless configured.
+            // options: offset. 
+            // We want center.
+            // Center offset = -(WindowHeight/2 - ItemHeight/2).
+            offset: -1 * (window.innerHeight / 2 - STATE.itemHeight / 2),
+            duration: 500
+        });
+
+        console.log("Forced Landed.");
+        // Reset
+        STATE.isForcing = false;
+        STATE.forceCountdown = null;
+        STATE.targetWordForCountdown = null;
     }
 }
 
