@@ -462,17 +462,49 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
     let clickTimer = null;
     let longPressTimer = null;
     let isPressing = false;
+    // New: Soft Reset
+    function softReset() {
+        console.log("Performing Soft Reset...");
+        // 1. Reset Logic State
+        STATE.forcedWord = null;
+        STATE.forcedIndex = 0;
+        STATE.isForcing = false;
+        STATE.forcedRank = 1;
+        STATE.forceCountdown = null;
+        STATE.targetWordForCountdown = null;
+        STATE.recentWords = []; // Clear history
+
+        // 2. Clear & Refill DOM
+        listElement.innerHTML = '';
+        const initialCount = BATCH_SIZE * 3;
+        appendWords(initialCount);
+
+        // 3. Re-center
+        const items = listElement.querySelectorAll('.word-item');
+        if (items.length > 0) {
+            const middleIndex = Math.floor(items.length / 2);
+            items[middleIndex].scrollIntoView({ block: 'center' });
+            setTimeout(updateActiveState, 100);
+        }
+    }
 
     triggerEl.addEventListener('click', (e) => {
         e.preventDefault();
-        // Single click logic optional, avoiding conflict with dblclick
+        clickCount++;
+
+        if (clickCount === 1) {
+            clickTimer = setTimeout(() => {
+                clickCount = 0;
+            }, 600); // Reset window for triple click
+        } else if (clickCount === 3) {
+            clearTimeout(clickTimer);
+            clickCount = 0;
+            openModal();
+        }
     });
 
-    // Double Click / Double Tap Support
-    triggerEl.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        openModal();
-    });
+    // Remove dblclick to prevent conflict
+    // triggerEl.addEventListener('dblclick', ... );
 
     // For Better Mobile Double Tap Support (if dblclick is slow)
     let lastTap = 0;
@@ -511,6 +543,7 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
     }
 
     function openModal() {
+        softReset(); // Always reset when opening
         modalEl.showModal();
         inputEl.focus();
     }
