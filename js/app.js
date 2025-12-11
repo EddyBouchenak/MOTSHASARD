@@ -19,9 +19,7 @@ const STATE = {
     forcedRank: 1, // Default position 1
     forceCountdown: null, // New: Number of stops before forcing entire word
     targetWordForCountdown: null, // New: The word to force whole
-    recentWords: [], // History buffer for anti-repetition
-    hasInteracted: false, // New: Wait for first interaction before VRTX logic
-    turnStartScrollTop: 0 // New: Track scroll start to prevent micro-adjustments counting as turns
+    recentWords: [] // History buffer for anti-repetition
 };
 
 // --- DOM Elements ---
@@ -186,22 +184,7 @@ function updateActiveState() {
 // Scroll Handler
 // Scroll Handler with Prediction
 let scrollTimeout;
-let isScrolling = false;
-
-// Optimize Active State Update with RAF
-let rafId = null;
-function scheduleActiveUpdate() {
-    if (rafId) return;
-    rafId = requestAnimationFrame(() => {
-        updateActiveState();
-        rafId = null;
-    });
-}
-
 listElement.addEventListener('scroll', () => {
-    isScrolling = true;
-    scheduleActiveUpdate(); // Continuous highlight
-
     const now = Date.now();
     const currentScrollTop = listElement.scrollTop;
 
@@ -244,21 +227,9 @@ listElement.addEventListener('scroll', () => {
         // If we are in Countdown Mode, we DO NOT force letters in the tube.
         // We want pure random words until the countdown finishes.
         if (STATE.forceCountdown !== null) {
-            // If we are in Countdown Mode, we DO NOT force letters in the tube.
-            // We want pure random words until the countdown finishes.
-            // VRTX Logic (Rank Force)
-
-            // 1. Wait for Interaction
-            // We don't want the word to change instantly upon modal close.
-            const absVelocity = Math.abs(STATE.scrollVelocity);
-            if (!STATE.hasInteracted) {
-                if (absVelocity > 1.0) {
-                    STATE.hasInteracted = true; // User has spun the wheel
-                } else {
-                    return; // Do nothing until first spin
-                }
-            }
-
+            // Do nothing during scroll for countdown mode.
+            // The forcing happens ONLY on the final stop.
+        } else {
             // Standard Rank/Letter Forcing (Tube Correction)
             // We always run this correction loop, but we target different items based on physics.
             const activeItem = getActiveItem();
@@ -267,50 +238,66 @@ listElement.addEventListener('scroll', () => {
                 const targetLetter = STATE.forcedWord[STATE.forcedIndex];
                 const targetIndex = (STATE.forcedRank || 1) - 1;
 
+                // Strategy:
+                // 1. Identify "Incoming" items based on direction.
+                //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
+                //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
+                // 2. Modify "Incoming" items aggressively.
+                // 3. ONLY Modify "Active" item if:
+                //    a) We are STOPPING (cleaning up the landing).
+                //    b) We are SPINNING FAST (invisible).
+
                 // Define the "Correction Zone"
                 let itemsToCorrect = [];
 
-                // LOGIC THRESHOLD
-                // We avoid touching the active item if it's visible and slow (isStopping).
-                // This prevents the "trembling" or "transforming" effect.
-                const isFast = absVelocity > 3.0;
+                // LOGIC THRESHOLD (Kept High to avoid visible glitches)
+                const isFast = absVelocity > 3.0; // Still high for invisible swaps
+                const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
 
-                // Only correct active item if it's invisible (fast)
-                if (isFast) {
+                // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
+                // It is sharp enough to be read, so changing it looks like a glitch.
+                if (isFast || isStopping) {
                     itemsToCorrect.push(activeItem);
                 }
 
-                // Look Ahead
+                // B. The Future Items (Anticipation)
+                // Look ahead 1 to 5 items to create a seamless buffer.
                 let nextCandidate = activeItem;
                 const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-                const lookAheadCount = 20;
+                const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
 
                 for (let i = 0; i < lookAheadCount; i++) {
-                    if (direction > 0) nextCandidate = nextCandidate ? nextCandidate.nextElementSibling : null;
-                    else nextCandidate = nextCandidate ? nextCandidate.previousElementSibling : null;
-
-                    if (nextCandidate) itemsToCorrect.push(nextCandidate);
-                    else break;
-                }
-
-                // Apply Correction
-                itemsToCorrect.forEach(item => {
-                    const currentWord = item.textContent;
-
-                    // Safety check: Word must be long enough for rank
-                    if (currentWord.length <= targetIndex) {
-                        // Too short? Swap it immediately
-                        const newWord = getWordStartingWith(targetLetter, currentWord);
-                        item.textContent = newWord;
-                        return;
+                    if (direction > 0) {
+                        nextCandidate = nextCandidate.nextElementSibling;
+                    } else {
+                        nextCandidate = nextCandidate.previousElementSibling;
                     }
 
+                    if (nextCandidate) {
+                        itemsToCorrect.push(nextCandidate);
+                    } else {
+                        break;
+                    }
+                }
+
+                // Apply Correction to collected items
+                itemsToCorrect.forEach(item => {
+                    const currentWord = item.textContent;
+                    // Optimization: Don't re-read/re-write if already good
+                    // Check if it matches requirement
                     const letterAtPos = currentWord[targetIndex];
 
-                    // Only swap if letter doesn't match
+                    // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
+                    // we might still want to swap to ensure variety if needed, 
+                    // but for now, simple matching is enough.
+
+                    // Only skip if it matches the target letter.
                     if (letterAtPos !== targetLetter) {
+                        // SWAP
                         const newWord = getWordStartingWith(targetLetter, currentWord);
                         item.textContent = newWord;
+                        // Mark it so we don't swap it again unnecessarily
+                        // (Though our check above handles that, the attribute might be useful for debug)
                         item.setAttribute('data-forced', 'true');
                     }
                 });
@@ -321,85 +308,24 @@ listElement.addEventListener('scroll', () => {
     // Debounced "Scroll End" to confirm selection
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
-        isScrolling = false;
         // Scroll completely stopped
         // Ensure snap is active
         listElement.classList.remove('is-spinning');
 
-        updateActiveState(); // Final update
+        updateActiveState();
 
         if (STATE.isForcing) {
             // New: Countdown Logic
             if (STATE.forceCountdown !== null) {
-                // Decrement immediately on stop
                 if (STATE.forceCountdown > 0) {
-                    // Wait until we are "Landing" (Velocity < 2.0) to insert the word.
-                    // This ensures it catches the eye but doesn't fill the screen.
-                    if (absVelocity < 2.5 && absVelocity > 0.1) {
-                        const activeItem = getActiveItem();
-                        if (activeItem && activeItem.textContent !== STATE.targetWordForCountdown) {
-                            // 1. Force Center
-                            activeItem.textContent = STATE.targetWordForCountdown;
-                            activeItem.setAttribute('data-forced', 'true');
-
-                            // Ensure it's active immediately
-                            if (!activeItem.classList.contains('active')) {
-                                activeItem.classList.add('active');
-                            }
-
-                            // 2. Randomize Neighbors (Anti-Duplication)
-                            // Find neighbors and ensure they are not the target word
-                            let prevItem = activeItem.previousElementSibling;
-                            let nextItem = activeItem.nextElementSibling;
-                            const attempts = 10;
-
-                            if (prevItem && prevItem.textContent === STATE.targetWordForCountdown) {
-                                for (let i = 0; i < attempts; i++) {
-                                    const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
-                                    if (w !== STATE.targetWordForCountdown) {
-                                        prevItem.textContent = w;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (nextItem && nextItem.textContent === STATE.targetWordForCountdown) {
-                                for (let i = 0; i < attempts; i++) {
-                                    const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
-                                    if (w !== STATE.targetWordForCountdown) {
-                                        nextItem.textContent = w;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
                     STATE.forceCountdown--;
-                }
-
-                if (STATE.forceCountdown === 0) {
-                    // TIME TO STRIKE (The N-th throw)
-                    const centerItem = getActiveItem();
-                    if (centerItem && STATE.targetWordForCountdown) {
-                        centerItem.textContent = STATE.targetWordForCountdown;
-                        centerItem.classList.add('active'); // Ensure highlight
-                        console.log(`FORCE EXECUTED on throw ${STATE.forceCountdown + 1} (Target: ${STATE.targetWordForCountdown})`);
-
-                        // Disable forcing immediately (One-shot)
-                        STATE.isForcing = false;
-                        STATE.forceCountdown = null;
-                        STATE.targetWordForCountdown = null;
-                        STATE.forcedWord = null;
-                    }
-                    return;
-                } else {
-                    // Still counting down... (Random Throw)
                     console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
 
                     // Anti-Target Logic: Ensure we don't accidentally show the target word early
                     const centerItem = getActiveItem();
                     if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
                         console.log("Accidental Target Hit during countdown! Swapping...");
-                        let safeWord = "RATE";
+                        let safeWord = "RATE"; // Fallback
                         // Find a safe word
                         const attempts = 10;
                         for (let i = 0; i < attempts; i++) {
@@ -411,7 +337,24 @@ listElement.addEventListener('scroll', () => {
                         }
                         centerItem.textContent = safeWord;
                     }
-                    return; // Stop here, do not process letter-forcing logic
+                    return; // Consume this turn as a random draw
+                }
+
+                if (STATE.forceCountdown === 0) {
+                    // TIME TO STRIKE
+                    const centerItem = getActiveItem();
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.forceCountdown = null;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null; // Clear standard forcing too just in case
+                    }
+                    return; // Skip standard forcing logic
                 }
             }
 
@@ -519,53 +462,17 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
     let clickTimer = null;
     let longPressTimer = null;
     let isPressing = false;
-    // New: Soft Reset
-    function softReset() {
-        console.log("Performing Soft Reset...");
-        // 1. Reset Logic State
-        STATE.forcedWord = null;
-        STATE.forcedIndex = 0;
-        STATE.isForcing = false;
-        STATE.forcedRank = 1;
-        STATE.forceCountdown = null;
-        STATE.targetWordForCountdown = null;
-        STATE.recentWords = []; // Clear history
-        STATE.hasInteracted = false; // Reset interaction flag
-
-        // 2. Clear & Refill DOM
-        listElement.innerHTML = '';
-        const initialCount = BATCH_SIZE * 3;
-        appendWords(initialCount);
-
-        // 3. Re-center
-        const items = listElement.querySelectorAll('.word-item');
-        if (items.length > 0) {
-            const middleIndex = Math.floor(items.length / 2);
-            items[middleIndex].scrollIntoView({ block: 'center' });
-            setTimeout(() => {
-                updateActiveState();
-                STATE.turnStartScrollTop = listElement.scrollTop; // Set baseline for throws
-            }, 100);
-        }
-    }
 
     triggerEl.addEventListener('click', (e) => {
         e.preventDefault();
-        clickCount++;
-
-        if (clickCount === 1) {
-            clickTimer = setTimeout(() => {
-                clickCount = 0;
-            }, 600); // Reset window for triple click
-        } else if (clickCount === 3) {
-            clearTimeout(clickTimer);
-            clickCount = 0;
-            openModal();
-        }
+        // Single click logic optional, avoiding conflict with dblclick
     });
 
-    // Remove dblclick to prevent conflict
-    // triggerEl.addEventListener('dblclick', ... );
+    // Double Click / Double Tap Support
+    triggerEl.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        openModal();
+    });
 
     // For Better Mobile Double Tap Support (if dblclick is slow)
     let lastTap = 0;
@@ -604,7 +511,6 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
     }
 
     function openModal() {
-        softReset(); // Always reset when opening
         modalEl.showModal();
         inputEl.focus();
     }
