@@ -37,7 +37,7 @@ const indicatorRight = document.getElementById('word-length-indicator');
 
 const inputLeft = document.getElementById('backdoor-word');
 // inputLeftCount removed
-const indicatorLeft = document.getElementById('backdoor-length');
+// indicatorLeft removed
 
 const themeToggle = document.getElementById('theme-toggle');
 
@@ -59,7 +59,6 @@ function resetAppState() {
     // reset radio buttons
     const radios = document.querySelectorAll('input[name="forcing-count"]');
     radios.forEach(r => r.checked = false);
-    indicatorLeft.textContent = '(0)';
 
     // Clear recent history to ensure fresh random start? 
     // Maybe not necessary, but "suppression des configurations précédentes" implies state clean.
@@ -599,7 +598,7 @@ formRight.addEventListener('submit', (e) => {
 
 // 2. Left Modal (Backdoor - Countdown Forcing)
 inputLeft.addEventListener('input', (e) => {
-    indicatorLeft.textContent = `(${e.target.value.trim().length})`;
+    // No indicator update needed
 });
 
 formLeft.addEventListener('submit', (e) => {
