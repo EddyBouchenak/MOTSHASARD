@@ -317,15 +317,35 @@ listElement.addEventListener('scroll', () => {
         if (STATE.isForcing) {
             // New: Countdown Logic
             if (STATE.forceCountdown !== null) {
+                // Decrement immediately on stop
                 if (STATE.forceCountdown > 0) {
                     STATE.forceCountdown--;
+                }
+
+                if (STATE.forceCountdown === 0) {
+                    // TIME TO STRIKE (The N-th throw)
+                    const centerItem = getActiveItem();
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        console.log(`FORCE EXECUTED on throw ${STATE.forceCountdown + 1} (Target: ${STATE.targetWordForCountdown})`);
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.forceCountdown = null;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null;
+                    }
+                    return;
+                } else {
+                    // Still counting down... (Random Throw)
                     console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
 
                     // Anti-Target Logic: Ensure we don't accidentally show the target word early
                     const centerItem = getActiveItem();
                     if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
                         console.log("Accidental Target Hit during countdown! Swapping...");
-                        let safeWord = "RATE"; // Fallback
+                        let safeWord = "RATE";
                         // Find a safe word
                         const attempts = 10;
                         for (let i = 0; i < attempts; i++) {
@@ -337,24 +357,7 @@ listElement.addEventListener('scroll', () => {
                         }
                         centerItem.textContent = safeWord;
                     }
-                    return; // Consume this turn as a random draw
-                }
-
-                if (STATE.forceCountdown === 0) {
-                    // TIME TO STRIKE
-                    const centerItem = getActiveItem();
-                    if (centerItem && STATE.targetWordForCountdown) {
-                        centerItem.textContent = STATE.targetWordForCountdown;
-                        centerItem.classList.add('active'); // Ensure highlight
-                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
-
-                        // Disable forcing immediately (One-shot)
-                        STATE.isForcing = false;
-                        STATE.forceCountdown = null;
-                        STATE.targetWordForCountdown = null;
-                        STATE.forcedWord = null; // Clear standard forcing too just in case
-                    }
-                    return; // Skip standard forcing logic
+                    return; // Stop here, do not process letter-forcing logic
                 }
             }
 
