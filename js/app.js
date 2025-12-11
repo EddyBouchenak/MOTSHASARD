@@ -622,12 +622,13 @@ formLeft.addEventListener('submit', (e) => {
             // If N=1, countdown=0 (immediate).
             // If N=0 or empty, default to immediate (0).
 
-            let finalCount;
-            if (count > 0) {
-                finalCount = count - 1;
-            } else {
-                finalCount = 0;
-            }
+            // UPDATE: User requested +1 scroll offset.
+            // New logic: Use 'count' directly.
+            // If N=4, countdown=4.
+            // Loop: 4->3, 3->2, 2->1, 1->0 (4 random throws).
+            // 5th throw is Target.
+
+            let finalCount = count > 0 ? count : 0;
 
             STATE.forceCountdown = finalCount;
             STATE.targetWordForCountdown = word;
