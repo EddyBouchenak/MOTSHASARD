@@ -289,15 +289,12 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
-/* Native Scroll Snap & Inertia -Replaces JS physics */
+/* GSAP Controlled Scroll - Native Scroll Disabled */
 .word-list {
-    -webkit-overflow-scrolling: touch;
-    /* Critical for iOS momentum */
-    scroll-behavior: smooth;
-    /* Enhances programmatic scrolls */
-    overscroll-behavior: contain;
-    /* Prevents pull-to-refresh/global bounce */
+    overflow: hidden;
+    /* Disable native scroll */
+    touch-action: none;
+    /* Disable browser gesture handling (swipenav etc) */
+    /* -webkit-overflow-scrolling: touch; REMOVED interact with GSAP */
+    /* scroll-snap-type: y mandatory; REMOVED interact with GSAP */
 }
-
-/* Remove legacy is-spinning class styles if any existed beyond disabling snap */
-/* .word-list.is-spinning { scroll-snap-type: none; } -- REMOVED */
