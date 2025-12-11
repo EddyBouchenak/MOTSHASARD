@@ -15,7 +15,6 @@
 }
 
 /* Global horizontal scroll prevention */
-/* Global horizontal scroll prevention */
 html,
 body {
     width: 100%;
@@ -23,17 +22,18 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    /* App-like container */
-
-    /* Removed position: fixed to allow natural scroll context if needed, but usually hidden is enough */
-
+    /* Lock everything */
+    /* Lock everything */
+    position: fixed;
     /* Prevent rubber banding on iOS */
-    /* touch-action: none;  REMOVED: strict none breaks some interactions? pan-y is better on container */
-
+    touch-action: pan-y;
     /* DISALLOW horizontal swipes/zooms at browser level */
     overscroll-behavior-x: none;
+    /* Specific horizontal lock */
     overscroll-behavior-y: none;
-    /* Prevent Pull-to-Refresh on Body */
+    overflow-x: hidden;
+    /* Hard lock */
+    /* Prevent bounce effects globally */
 }
 
 /* Ensure no element can trigger horizontal scroll */
@@ -92,53 +92,28 @@ body {
 /* Main List Container */
 main {
     width: 100%;
-    /* Optional: Selection Overlay (Pure CSS aesthetic) */
-    /* Using pseudo-element on the lists container or separate element?
-       Since word-list scrolls, a fixed overlay must be sibling.
-       Assuming Main has relative positioning.
-    */
-    position: relative;
-    overflow: hidden;
-    /* Ensure list doesn't bleed */
-    height: 100vh;
+    height: 100%;
     max-width: 600px;
+    position: relative;
 }
 
 /* Infinite Scroll List */
-/* Physics & Scrolling UX */
-/* Native Scroll Snap - 100% CSS */
-
 .word-list {
     list-style: none;
-    width: 100%;
-    height: 100vh;
-    /* Fallback */
-    height: 100dvh;
-    /* Modern Mobile Viewport */
+    height: 100%;
     overflow-y: scroll;
-    /* Force Scroll */
-
+    scroll-snap-type: y mandatory;
     display: flex;
     flex-direction: column;
-    padding-block: calc(50vh - var(--item-height) / 2);
-    /* Center Alignment Padding */
-
-    /* Snap Physics */
-    scroll-snap-type: y mandatory;
-    scroll-behavior: smooth;
-
-    /* Mobile Inertia */
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    overscroll-behavior: contain;
-
-    /* Hide Scrollbars */
+    padding-top: calc(50dvh - var(--item-height) / 2);
+    padding-bottom: calc(50dvh - var(--item-height) / 2);
     scrollbar-width: none;
-    -ms-overflow-style: none;
+    /* Firefox */
 }
 
 .word-list::-webkit-scrollbar {
     display: none;
+    /* Chrome/Safari */
 }
 
 .word-item {
@@ -314,37 +289,12 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
-/* Locomotive Scroll Setup */
-
-/* Hide native scrollbar (Locomotive might add custom one, we want none) */
-.c-scrollbar {
-    display: none !important;
+/* When this class is active, we remove snapping to allow free spin */
+.word-list.is-spinning {
+    scroll-snap-type: none;
 }
 
-/*! locomotive-scroll v4.1.4 | MIT License | https://github.com/locomotivemtl/locomotive-scroll */
-html.has-scroll-smooth {
-    overflow: hidden;
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-}
-
-html.has-scroll-smooth body {
-    overflow: hidden;
-}
-
-/* GSAP Controlled Scroll - Native Scroll Disabled */
+/* Ensure minimal friction on touch */
 .word-list {
-    /* List styles mostly preserved */
-    /* overflow: hidden handled by Locomotive parent usually, but good to keep clean */
-    min-height: 100vh;
-    /* Ensure it takes space */
-    overflow: hidden;
-    /* Disable native scroll */
-    touch-action: none;
-    /* Disable browser gesture handling (swipenav etc) */
-    /* -webkit-overflow-scrolling: touch; REMOVED interact with GSAP */
-    /* scroll-snap-type: y mandatory; REMOVED interact with GSAP */
+    -webkit-overflow-scrolling: touch;
 }
