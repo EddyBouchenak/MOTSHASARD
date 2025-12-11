@@ -282,7 +282,8 @@ function initLocomotiveScroll() {
         handleScrollLogic(currentY, args.limit.y);
 
         // 2. Active State Update
-        updateActiveStateLocomotive(currentY);
+        // 2. Active State Update
+        updateActiveState();
 
         // 3. Infinite Scroll Check
         if (args.limit.y - currentY < 500) { // Near bottom
@@ -293,36 +294,17 @@ function initLocomotiveScroll() {
     });
 }
 
-function updateActiveStateLocomotive(scrollY) {
-    // Calculate center relative to viewport
-    // Viewport Center = window.innerHeight / 2
-    // Item at Center => Item.top - scrollY + (Item.height/2) ~= Viewport Center
-    // Item.top (absolute in container) ~= scrollY + Viewport Center - (Item.height/2)
-
-    const viewportCenter = window.innerHeight / 2;
-    // const absoluteCenterY = scrollY + viewportCenter; // This logic assumes top:0 alignment
-
-    // Simplest approach: "Geometric" check using DOM rects on reduced set?
-    // Or Math?
-    // Math is faster.
-    // items are stacked. 
-    // Index = (scrollY + ViewportCenter) / itemHeight? 
-    // We need to account for padding-top if any.
-    // style.css has padding-top: calc(50dvh - itemHeight/2)
-    // So 0 scroll = Index 0 is at center.
-    // Therefore: Index = scrollY / itemHeight.
-
-    const aproxIndex = Math.round(scrollY / STATE.itemHeight);
-    const items = listElement.children;
-    const centerItem = items[aproxIndex]; // Safe enough?
-
+function updateActiveState() {
+    // Robust Geometric Check (Works for Init and Scroll)
+    const centerItem = getActiveItem();
     if (!centerItem) return;
 
     const currentActive = listElement.querySelector('.word-item.active');
     if (currentActive && currentActive !== centerItem) {
         currentActive.classList.remove('active');
     }
-    if (!centerItem.classList.contains('active')) {
+
+    if (centerItem && !centerItem.classList.contains('active')) {
         centerItem.classList.add('active');
     }
 }
