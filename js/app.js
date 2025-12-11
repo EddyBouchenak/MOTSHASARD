@@ -20,7 +20,8 @@ const STATE = {
     forceCountdown: null, // New: Number of stops before forcing entire word
     targetWordForCountdown: null, // New: The word to force whole
     recentWords: [], // History buffer for anti-repetition
-    hasInteracted: false // New: Wait for first interaction before VRTX logic
+    hasInteracted: false, // New: Wait for first interaction before VRTX logic
+    turnStartScrollTop: 0 // New: Track scroll start to prevent micro-adjustments counting as turns
 };
 
 // --- DOM Elements ---
@@ -228,45 +229,8 @@ listElement.addEventListener('scroll', () => {
         // If we are in Countdown Mode, we DO NOT force letters in the tube.
         // We want pure random words until the countdown finishes.
         if (STATE.forceCountdown !== null) {
-            // Case A: Countdown Mode
-            // Logic: If Count is 1, we are in the FINAL SCROLL. The next stop IS the target.
-            // We want to surgically insert the ONE target word when we are slowing down,
-            // to avoid a "wall of text".
-            if (STATE.forceCountdown === 1) {
-                const absVelocity = Math.abs(STATE.scrollVelocity);
-
-                // Wait until we are "Landing" (Velocity < 2.0) to insert the word.
-                // This ensures it catches the eye but doesn't fill the screen.
-                if (absVelocity < 2.5 && absVelocity > 0.1) {
-                    const activeItem = getActiveItem();
-                    if (activeItem && activeItem.textContent !== STATE.targetWordForCountdown) {
-                        // 1. Force Center
-                        activeItem.textContent = STATE.targetWordForCountdown;
-                        activeItem.setAttribute('data-forced', 'true');
-
-                        // 2. Randomize Neighbors (Anti-Duplication)
-                        // Ensure the words right above/below are NOT the target.
-                        const prev = activeItem.previousElementSibling;
-                        const next = activeItem.nextElementSibling;
-
-                        const randomize = (el) => {
-                            if (el && el.textContent === STATE.targetWordForCountdown) {
-                                let w = getWordStartingWith('RANDOM', STATE.targetWordForCountdown); // 'RANDOM' trigger fallback
-                                // Simple random fallback if function strictly requires letter
-                                if (!w || w === STATE.targetWordForCountdown) {
-                                    w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
-                                }
-                                el.textContent = w;
-                            }
-                        };
-                        randomize(prev);
-                        randomize(next);
-                    }
-                }
-            }
-            // else: Do nothing. Random words are fine for Count > 1.
-
-        } else {
+            // If we are in Countdown Mode, we DO NOT force letters in the tube.
+            // We want pure random words until the countdown finishes.
             // VRTX Logic (Rank Force)
 
             // 1. Wait for Interaction
@@ -522,7 +486,10 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
         if (items.length > 0) {
             const middleIndex = Math.floor(items.length / 2);
             items[middleIndex].scrollIntoView({ block: 'center' });
-            setTimeout(updateActiveState, 100);
+            setTimeout(() => {
+                updateActiveState();
+                STATE.turnStartScrollTop = listElement.scrollTop; // Set baseline for throws
+            }, 100);
         }
     }
 
