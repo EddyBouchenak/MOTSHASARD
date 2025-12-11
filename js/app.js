@@ -36,7 +36,7 @@ const inputRight = document.getElementById('target-word');
 const indicatorRight = document.getElementById('word-length-indicator');
 
 const inputLeft = document.getElementById('backdoor-word');
-const inputLeftCount = document.getElementById('backdoor-count');
+// inputLeftCount removed
 const indicatorLeft = document.getElementById('backdoor-length');
 
 const themeToggle = document.getElementById('theme-toggle');
@@ -56,7 +56,9 @@ function resetAppState() {
     inputRight.value = '';
     indicatorRight.textContent = '(0)';
     inputLeft.value = '';
-    inputLeftCount.value = '';
+    // reset radio buttons
+    const radios = document.querySelectorAll('input[name="forcing-count"]');
+    radios.forEach(r => r.checked = false);
     indicatorLeft.textContent = '(0)';
 
     // Clear recent history to ensure fresh random start? 
@@ -604,8 +606,10 @@ formLeft.addEventListener('submit', (e) => {
     e.preventDefault();
 
     const word = inputLeft.value.trim().toUpperCase();
-    const countValue = parseInt(inputLeftCount.value, 10);
-    const count = isNaN(countValue) ? 0 : countValue;
+
+    // Read Count from Radio
+    const countInput = formLeft.querySelector('input[name="forcing-count"]:checked');
+    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0 if nothing selected
 
     if (word && word.length > 0) {
         modalLeft.close();
@@ -616,19 +620,16 @@ formLeft.addEventListener('submit', (e) => {
             STATE.isForcing = true;
 
             // Strict N-th logic:
-            // Input N=4 means "Show target at 4th throw".
-            // So we need 3 random throws before.
+            // Input N=3 means "Show target at 3rd throw".
+            // So we need 2 random throws before.
             // Countdown should be N-1.
-            // If N=1, countdown=0 (immediate).
-            // If N=0 or empty, default to immediate (0).
 
-            // UPDATE: User requested +1 scroll offset.
-            // New logic: Use 'count' directly.
-            // If N=4, countdown=4.
-            // Loop: 4->3, 3->2, 2->1, 1->0 (4 random throws).
-            // 5th throw is Target.
-
-            let finalCount = count > 0 ? count : 0;
+            let finalCount;
+            if (count > 0) {
+                finalCount = count - 1;
+            } else {
+                finalCount = 0; // Immediate force if N=1 or 0
+            }
 
             STATE.forceCountdown = finalCount;
             STATE.targetWordForCountdown = word;

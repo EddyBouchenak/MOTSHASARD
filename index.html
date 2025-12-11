@@ -101,9 +101,31 @@
                 <span id="backdoor-length">(0)</span>
             </div>
 
-            <div class="input-group">
-                <input type="number" id="backdoor-count" placeholder="0" min="0" style="width: 80px;">
-                <label for="backdoor-count" style="font-size: 0.8rem; opacity: 0.7;">TIRAGES</label>
+            <!-- Count Selector (1-5) -->
+            <div class="rank-selector">
+                <label>Nombre de lancers avant forçage :</label>
+                <div class="rank-options">
+                    <label class="rank-option">
+                        <input type="radio" name="forcing-count" value="1">
+                        <span>1</span>
+                    </label>
+                    <label class="rank-option">
+                        <input type="radio" name="forcing-count" value="2">
+                        <span>2</span>
+                    </label>
+                    <label class="rank-option">
+                        <input type="radio" name="forcing-count" value="3">
+                        <span>3</span>
+                    </label>
+                    <label class="rank-option">
+                        <input type="radio" name="forcing-count" value="4">
+                        <span>4</span>
+                    </label>
+                    <label class="rank-option">
+                        <input type="radio" name="forcing-count" value="5">
+                        <span>5</span>
+                    </label>
+                </div>
             </div>
 
             <button id="start-backdoor-btn" type="submit">GO</button>
