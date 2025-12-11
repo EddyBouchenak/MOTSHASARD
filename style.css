@@ -15,6 +15,7 @@
 }
 
 /* Global horizontal scroll prevention */
+/* Global horizontal scroll prevention */
 html,
 body {
     width: 100%;
@@ -22,18 +23,17 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    /* Lock everything */
-    /* Lock everything */
-    position: fixed;
+    /* App-like container */
+
+    /* Removed position: fixed to allow natural scroll context if needed, but usually hidden is enough */
+
     /* Prevent rubber banding on iOS */
-    touch-action: pan-y;
+    /* touch-action: none;  REMOVED: strict none breaks some interactions? pan-y is better on container */
+
     /* DISALLOW horizontal swipes/zooms at browser level */
     overscroll-behavior-x: none;
-    /* Specific horizontal lock */
     overscroll-behavior-y: none;
-    overflow-x: hidden;
-    /* Hard lock */
-    /* Prevent bounce effects globally */
+    /* Prevent Pull-to-Refresh on Body */
 }
 
 /* Ensure no element can trigger horizontal scroll */
@@ -110,9 +110,14 @@ main {
 
 .word-list {
     list-style: none;
-    min-height: 100%;
-    height: 100%;
+    width: 100%;
+    height: 100vh;
+    /* Fallback */
+    height: 100dvh;
+    /* Modern Mobile Viewport */
     overflow-y: scroll;
+    /* Force Scroll */
+
     display: flex;
     flex-direction: column;
     padding-block: calc(50vh - var(--item-height) / 2);
