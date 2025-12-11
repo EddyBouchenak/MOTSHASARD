@@ -217,24 +217,13 @@ listElement.addEventListener('scroll', () => {
     }
 
     // Velocity & Physics
-    // High velocity = "Spinning" mode (no snap)
-    // Low velocity = "Landing" mode (snap enabled via CSS removal)
+    // Custom physics (is-spinning toggling) REMOVED in favor of Native CSS Scroll Snap.
+    // We still calculate velocity for Forcing prediction below, but we no longer manage snap classes manually.
 
-    const absVelocity = Math.abs(STATE.scrollVelocity); // PHYSICS THRESHOLD (Lowered for Mobile Momentum)
+    const absVelocity = Math.abs(STATE.scrollVelocity);
 
-    // Tweak: Lower threshold to make it feel more "slippery" / "roulette-like"
-    if (absVelocity > 0.5) { // Was 1.0, lowered for easier spin on mobile
-        // Fast spin!
-        if (!listElement.classList.contains('is-spinning')) {
-            listElement.classList.add('is-spinning');
-        }
-    } else if (absVelocity < 0.1) {
-        // Only re-enable snap when almost stopped
-        // Slow enough to snap
-        if (listElement.classList.contains('is-spinning')) {
-            listElement.classList.remove('is-spinning');
-        }
-    }
+    // Legacy "Spinning" logic block removed.
+    // Native Inertia handles the "slippery" feel now.
 
     // --- FORCING LOGIC REFINED: ANTICIPATION ---
     // Goal: Pre-load the "Tube" with valid words BEFORE they hit the center.
@@ -330,8 +319,8 @@ listElement.addEventListener('scroll', () => {
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
         // Scroll completely stopped
-        // Ensure snap is active
-        listElement.classList.remove('is-spinning');
+        // Ensure snap is active (Native CSS handles this, just cleanup if needed)
+        // listElement.classList.remove('is-spinning'); // Removed
 
         updateActiveState();
 

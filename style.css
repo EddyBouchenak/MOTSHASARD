@@ -289,12 +289,13 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
-/* When this class is active, we remove snapping to allow free spin */
-.word-list.is-spinning {
-    scroll-snap-type: none;
-}
-
-/* Ensure minimal friction on touch */
+/* Native Scroll Snap & Inertia -Replaces JS physics */
 .word-list {
     -webkit-overflow-scrolling: touch;
+    /* Critical for iOS momentum */
+    scroll-behavior: smooth;
+    /* Enhances programmatic scrolls */
 }
+
+/* Remove legacy is-spinning class styles if any existed beyond disabling snap */
+/* .word-list.is-spinning { scroll-snap-type: none; } -- REMOVED */
