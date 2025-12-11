@@ -19,7 +19,8 @@ const STATE = {
     forcedRank: 1, // Default position 1
     forceCountdown: null, // New: Number of stops before forcing entire word
     targetWordForCountdown: null, // New: The word to force whole
-    recentWords: [] // History buffer for anti-repetition
+    recentWords: [], // History buffer for anti-repetition
+    hasInteracted: false // New: Wait for first interaction before VRTX logic
 };
 
 // --- DOM Elements ---
@@ -229,42 +230,56 @@ listElement.addEventListener('scroll', () => {
         if (STATE.forceCountdown !== null) {
             // Case A: Countdown Mode
             // Logic: If Count is 1, we are in the FINAL SCROLL. The next stop IS the target.
-            // We must aggressively populate the tube with the target word so it's ready.
+            // We want to surgically insert the ONE target word when we are slowing down,
+            // to avoid a "wall of text".
             if (STATE.forceCountdown === 1) {
-                const activeItem = getActiveItem();
-                const itemsToCorrect = [];
-
-                // Be very aggressive: Swapping even active item if moving fast, 
-                // and definitely swapping upcoming items.
                 const absVelocity = Math.abs(STATE.scrollVelocity);
-                if (absVelocity > 0.5) { // If moving at all, swap active
-                    if (activeItem) itemsToCorrect.push(activeItem);
-                }
 
-                // Look ahead
-                let nextCandidate = activeItem;
-                const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-                const lookAheadCount = 10;
+                // Wait until we are "Landing" (Velocity < 2.0) to insert the word.
+                // This ensures it catches the eye but doesn't fill the screen.
+                if (absVelocity < 2.5 && absVelocity > 0.1) {
+                    const activeItem = getActiveItem();
+                    if (activeItem && activeItem.textContent !== STATE.targetWordForCountdown) {
+                        // 1. Force Center
+                        activeItem.textContent = STATE.targetWordForCountdown;
+                        activeItem.setAttribute('data-forced', 'true');
 
-                for (let i = 0; i < lookAheadCount; i++) {
-                    if (direction > 0) nextCandidate = nextCandidate ? nextCandidate.nextElementSibling : null;
-                    else nextCandidate = nextCandidate ? nextCandidate.previousElementSibling : null;
+                        // 2. Randomize Neighbors (Anti-Duplication)
+                        // Ensure the words right above/below are NOT the target.
+                        const prev = activeItem.previousElementSibling;
+                        const next = activeItem.nextElementSibling;
 
-                    if (nextCandidate) itemsToCorrect.push(nextCandidate);
-                    else break;
-                }
-
-                // APPLY FORCE TARGET WORD
-                itemsToCorrect.forEach(item => {
-                    if (item.textContent !== STATE.targetWordForCountdown) {
-                        item.textContent = STATE.targetWordForCountdown;
-                        item.setAttribute('data-forced', 'true');
+                        const randomize = (el) => {
+                            if (el && el.textContent === STATE.targetWordForCountdown) {
+                                let w = getWordStartingWith('RANDOM', STATE.targetWordForCountdown); // 'RANDOM' trigger fallback
+                                // Simple random fallback if function strictly requires letter
+                                if (!w || w === STATE.targetWordForCountdown) {
+                                    w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
+                                }
+                                el.textContent = w;
+                            }
+                        };
+                        randomize(prev);
+                        randomize(next);
                     }
-                });
+                }
             }
             // else: Do nothing. Random words are fine for Count > 1.
 
         } else {
+            // VRTX Logic (Rank Force)
+
+            // 1. Wait for Interaction
+            // We don't want the word to change instantly upon modal close.
+            const absVelocity = Math.abs(STATE.scrollVelocity);
+            if (!STATE.hasInteracted) {
+                if (absVelocity > 1.0) {
+                    STATE.hasInteracted = true; // User has spun the wheel
+                } else {
+                    return; // Do nothing until first spin
+                }
+            }
+
             // Standard Rank/Letter Forcing (Tube Correction)
             // We always run this correction loop, but we target different items based on physics.
             const activeItem = getActiveItem();
@@ -272,15 +287,6 @@ listElement.addEventListener('scroll', () => {
             if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
                 const targetLetter = STATE.forcedWord[STATE.forcedIndex];
                 const targetIndex = (STATE.forcedRank || 1) - 1;
-
-                // Strategy:
-                // 1. Identify "Incoming" items based on direction.
-                //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
-                //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
-                // 2. Modify "Incoming" items aggressively.
-                // 3. ONLY Modify "Active" item if:
-                //    a) We are STOPPING (cleaning up the landing).
-                //    b) We are SPINNING FAST (invisible).
 
                 // Define the "Correction Zone"
                 let itemsToCorrect = [];
@@ -295,44 +301,37 @@ listElement.addEventListener('scroll', () => {
                     itemsToCorrect.push(activeItem);
                 }
 
-                // B. The Future Items (Anticipation)
-                // Look ahead 1 to 5 items to create a seamless buffer.
+                // Look Ahead
                 let nextCandidate = activeItem;
                 const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-                const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
+                const lookAheadCount = 20;
 
                 for (let i = 0; i < lookAheadCount; i++) {
-                    if (direction > 0) {
-                        nextCandidate = nextCandidate.nextElementSibling;
-                    } else {
-                        nextCandidate = nextCandidate.previousElementSibling;
-                    }
+                    if (direction > 0) nextCandidate = nextCandidate ? nextCandidate.nextElementSibling : null;
+                    else nextCandidate = nextCandidate ? nextCandidate.previousElementSibling : null;
 
-                    if (nextCandidate) {
-                        itemsToCorrect.push(nextCandidate);
-                    } else {
-                        break;
-                    }
+                    if (nextCandidate) itemsToCorrect.push(nextCandidate);
+                    else break;
                 }
 
-                // Apply Correction to collected items
+                // Apply Correction
                 itemsToCorrect.forEach(item => {
                     const currentWord = item.textContent;
-                    // Optimization: Don't re-read/re-write if already good
-                    // Check if it matches requirement
-                    const letterAtPos = currentWord[targetIndex];
 
-                    // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
-                    // we might still want to swap to ensure variety if needed, 
-                    // but for now, simple matching is enough.
-
-                    // Only skip if it matches the target letter.
-                    if (letterAtPos !== targetLetter) {
-                        // SWAP
+                    // Safety check: Word must be long enough for rank
+                    if (currentWord.length <= targetIndex) {
+                        // Too short? Swap it immediately
                         const newWord = getWordStartingWith(targetLetter, currentWord);
                         item.textContent = newWord;
-                        // Mark it so we don't swap it again unnecessarily
-                        // (Though our check above handles that, the attribute might be useful for debug)
+                        return;
+                    }
+
+                    const letterAtPos = currentWord[targetIndex];
+
+                    // Only swap if letter doesn't match
+                    if (letterAtPos !== targetLetter) {
+                        const newWord = getWordStartingWith(targetLetter, currentWord);
+                        item.textContent = newWord;
                         item.setAttribute('data-forced', 'true');
                     }
                 });
@@ -511,6 +510,7 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
         STATE.forceCountdown = null;
         STATE.targetWordForCountdown = null;
         STATE.recentWords = []; // Clear history
+        STATE.hasInteracted = false; // Reset interaction flag
 
         // 2. Clear & Refill DOM
         listElement.innerHTML = '';
