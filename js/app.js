@@ -186,7 +186,22 @@ function updateActiveState() {
 // Scroll Handler
 // Scroll Handler with Prediction
 let scrollTimeout;
+let isScrolling = false;
+
+// Optimize Active State Update with RAF
+let rafId = null;
+function scheduleActiveUpdate() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+        updateActiveState();
+        rafId = null;
+    });
+}
+
 listElement.addEventListener('scroll', () => {
+    isScrolling = true;
+    scheduleActiveUpdate(); // Continuous highlight
+
     const now = Date.now();
     const currentScrollTop = listElement.scrollTop;
 
@@ -306,17 +321,58 @@ listElement.addEventListener('scroll', () => {
     // Debounced "Scroll End" to confirm selection
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
+        isScrolling = false;
         // Scroll completely stopped
         // Ensure snap is active
         listElement.classList.remove('is-spinning');
 
-        updateActiveState();
+        updateActiveState(); // Final update
 
         if (STATE.isForcing) {
             // New: Countdown Logic
             if (STATE.forceCountdown !== null) {
                 // Decrement immediately on stop
                 if (STATE.forceCountdown > 0) {
+                    // Wait until we are "Landing" (Velocity < 2.0) to insert the word.
+                    // This ensures it catches the eye but doesn't fill the screen.
+                    if (absVelocity < 2.5 && absVelocity > 0.1) {
+                        const activeItem = getActiveItem();
+                        if (activeItem && activeItem.textContent !== STATE.targetWordForCountdown) {
+                            // 1. Force Center
+                            activeItem.textContent = STATE.targetWordForCountdown;
+                            activeItem.setAttribute('data-forced', 'true');
+
+                            // Ensure it's active immediately
+                            if (!activeItem.classList.contains('active')) {
+                                activeItem.classList.add('active');
+                            }
+
+                            // 2. Randomize Neighbors (Anti-Duplication)
+                            // Find neighbors and ensure they are not the target word
+                            let prevItem = activeItem.previousElementSibling;
+                            let nextItem = activeItem.nextElementSibling;
+                            const attempts = 10;
+
+                            if (prevItem && prevItem.textContent === STATE.targetWordForCountdown) {
+                                for (let i = 0; i < attempts; i++) {
+                                    const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
+                                    if (w !== STATE.targetWordForCountdown) {
+                                        prevItem.textContent = w;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (nextItem && nextItem.textContent === STATE.targetWordForCountdown) {
+                                for (let i = 0; i < attempts; i++) {
+                                    const w = STATE.shuffledWords[Math.floor(Math.random() * STATE.shuffledWords.length)];
+                                    if (w !== STATE.targetWordForCountdown) {
+                                        nextItem.textContent = w;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     STATE.forceCountdown--;
                 }
 
