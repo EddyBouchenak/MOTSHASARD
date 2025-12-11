@@ -21,8 +21,8 @@ const STATE = {
     targetWordForCountdown: null, // New: The word to force whole
     recentWords: [], // History buffer for anti-repetition
 
-    // Locomotive Props
-    scroll: null, // Instance
+    // Lenis Props
+    lenis: null, // Instance
     itemHeight: 100
 };
 
@@ -237,148 +237,100 @@ function init() {
 
     STATE.itemHeight = listElement.querySelector('.word-item').offsetHeight || 100;
 
-    // Setup Locomotive Scroll
-    initLocomotiveScroll();
+    // Setup Lenis Scroll
+    initLenisScroll();
 
     // Scroll to middle (approx)
-    // We can't use scrollIntoView easily with virtual scroll.
-    // Locomotive `scrollTo` works nicely.
     // Wait for init
     setTimeout(() => {
-        if (STATE.scroll) {
+        if (STATE.lenis) {
             const middleIndex = Math.floor(initialCount / 2);
             const targetEl = listElement.children[middleIndex];
             if (targetEl) {
-                STATE.scroll.scrollTo(targetEl, { duration: 0, disableLerp: true });
+                STATE.lenis.scrollTo(targetEl, { duration: 0, immediate: true });
             }
         }
     }, 100);
 }
 
-// --- Locomotive Scroll Logic ---
+// --- Lenis Scroll Logic ---
 
-let scrollTimeout; // For detecting scroll stop
+let scrollTimeout;
 
-function initLocomotiveScroll() {
-    STATE.scroll = new LocomotiveScroll({
-        el: document.querySelector('[data-scroll-container]'),
-        smooth: true,
-        multiplier: 1.0,
-        lerp: 0.1, // Heavy inertia
-        smartphone: {
-            smooth: true
-        },
-        tablet: {
-            smooth: true
-        }
+function initLenisScroll() {
+    STATE.lenis = new Lenis({
+        wrapper: document.querySelector('.word-list'),
+        content: document.querySelector('.word-list'),
+        lerp: 0.1,
+        smoothTouch: true,
+        touchMultiplier: 2,
+        infinite: false
     });
 
-    // Event Listener for Scroll
-    STATE.scroll.on('scroll', (args) => {
-        // args.scroll.y is current scroll position
-        const currentY = args.scroll.y;
+    function raf(time) {
+        STATE.lenis.raf(time);
+        requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
 
-        // 1. Logic Loop (Velocity, Forcing Prediction)
-        handleScrollLogic(currentY, args.limit.y);
+    STATE.lenis.on('scroll', (e) => {
+        const currentY = e.scroll;
+        const limitY = e.limit; // Max scroll available (not limit.y object, usually number or limited by content)
+        // Check Lenis API: e.limit might be number or undefined depending on version, check instance.
+        // Safer:
+        const maxScroll = STATE.lenis.limit;
 
-        // 2. Active State Update
-        // 2. Active State Update
+        handleScrollLogic(currentY);
         updateActiveState();
 
-        // 3. Infinite Scroll Check
-        if (args.limit.y - currentY < 500) { // Near bottom
+        if (maxScroll - currentY < 500) {
             appendWords(BATCH_SIZE);
-            STATE.scroll.update(); // Important: Tell LS content changed
+            STATE.lenis.resize();
         }
-
     });
 }
 
-function updateActiveState() {
-    // Robust Geometric Check (Works for Init and Scroll)
-    const centerItem = getActiveItem();
-    if (!centerItem) return;
-
-    const currentActive = listElement.querySelector('.word-item.active');
-    if (currentActive && currentActive !== centerItem) {
-        currentActive.classList.remove('active');
-    }
-
-    if (centerItem && !centerItem.classList.contains('active')) {
-        centerItem.classList.add('active');
-    }
-}
-
-
-function handleScrollLogic(currentY, limitY) {
-    // Detect Stop for Forcing
-    // Locomotive doesn't give explicit "stop" event easily without polling speed.
-    // But we can check speed from args? args.speed?
-    // Or custom check.
-
-    // Use a debouncer.
+function handleScrollLogic(currentY) {
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
-        // STOPPED
-
-        // Forcing Check
         if (STATE.isForcing) {
-
             if (STATE.forceCountdown !== null) {
                 if (STATE.forceCountdown > 0) {
-                    // Random stop occurred.
                     STATE.forceCountdown--;
                     console.log(`Stop detected. Countdown: ${STATE.forceCountdown}`);
                 } else if (STATE.forceCountdown === 0) {
-                    // TARGET TURN.
-                    // We should be forcing NOW.
-                    // Trigger the ScrollTo.
                     triggerForceScroll();
                 }
             }
         }
-
     }, 150);
 }
 
 function triggerForceScroll() {
-    // We want to scroll to a target word.
-    // First, verify we have it or generate it.
-
-    // We need to pick a spot "ahead" or just snap the current spot to be the target?
-    // "Roulette" implies we spin, then land.
-    // If we already stopped (countdown=0), we might have missed the visual "spin".
-    // Wait... 
-    // Logic V3 was "N Spins". 
-    // If the user scrolls, pauses, scrolls, pauses... 
-    // The N-th pause triggers the move.
-
-    // Problem: If they pause naturally, "Count 0" happens.
-    // We need to ensure the target is visible.
-    // Strategy: 
-    // When "Count 0" is reached (Stop detected), we:
-    // 1. Identify current center item.
-    // 2. Change it to Target Word (Sneaky).
-    // 3. Ensure centered perfectly.
-
     const activeItem = listElement.querySelector('.word-item.active');
     if (activeItem && STATE.targetWordForCountdown) {
-        // Inject
         activeItem.textContent = STATE.targetWordForCountdown;
 
-        // Correct Alignment (Snap)
-        STATE.scroll.scrollTo(activeItem, {
-            offset: 0, // Should be centered if configured/calculated right? 
-            // Actually, scrollTo(target) puts target at TOP usually unless configured.
-            // options: offset. 
-            // We want center.
-            // Center offset = -(WindowHeight/2 - ItemHeight/2).
-            offset: -1 * (window.innerHeight / 2 - STATE.itemHeight / 2),
-            duration: 500
+        // Offset Calculation for Centering
+        // Lenis scrollTo(target, {offset})
+        // We want Center of Item to match Center of Viewport.
+        // Scroll Target = Item Top.
+        // Viewport Center = H / 2.
+        // Item Center = Item Top + (Item H / 2).
+        // We want (Item Top - ScrollY) to be (H/2 - ItemH/2).
+        // So ScrollY = Item Top - (H/2 - ItemH/2).
+        // Lenis scrollTo takes specific value or element. If element, it goes to element top + offset.
+        // So offset should be -(H/2 - ItemH/2).
+
+        const offsetVal = -1 * (window.innerHeight / 2 - STATE.itemHeight / 2);
+
+        STATE.lenis.scrollTo(activeItem, {
+            offset: offsetVal,
+            duration: 2,
+            easing: (t) => 1 - Math.pow(1 - t, 4) // easeOutQuart
         });
 
-        console.log("Forced Landed.");
-        // Reset
+        console.log("Forced Landed (Lenis).");
         STATE.isForcing = false;
         STATE.forceCountdown = null;
         STATE.targetWordForCountdown = null;
