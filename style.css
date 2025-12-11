@@ -295,6 +295,8 @@ dialog h2 {
     /* Critical for iOS momentum */
     scroll-behavior: smooth;
     /* Enhances programmatic scrolls */
+    overscroll-behavior: contain;
+    /* Prevents pull-to-refresh/global bounce */
 }
 
 /* Remove legacy is-spinning class styles if any existed beyond disabling snap */
