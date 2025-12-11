@@ -227,8 +227,43 @@ listElement.addEventListener('scroll', () => {
         // If we are in Countdown Mode, we DO NOT force letters in the tube.
         // We want pure random words until the countdown finishes.
         if (STATE.forceCountdown !== null) {
-            // Do nothing during scroll for countdown mode.
-            // The forcing happens ONLY on the final stop.
+            // Case A: Countdown Mode
+            // Logic: If Count is 1, we are in the FINAL SCROLL. The next stop IS the target.
+            // We must aggressively populate the tube with the target word so it's ready.
+            if (STATE.forceCountdown === 1) {
+                const activeItem = getActiveItem();
+                const itemsToCorrect = [];
+
+                // Be very aggressive: Swapping even active item if moving fast, 
+                // and definitely swapping upcoming items.
+                const absVelocity = Math.abs(STATE.scrollVelocity);
+                if (absVelocity > 0.5) { // If moving at all, swap active
+                    if (activeItem) itemsToCorrect.push(activeItem);
+                }
+
+                // Look ahead
+                let nextCandidate = activeItem;
+                const direction = STATE.scrollVelocity > 0 ? 1 : -1;
+                const lookAheadCount = 10;
+
+                for (let i = 0; i < lookAheadCount; i++) {
+                    if (direction > 0) nextCandidate = nextCandidate ? nextCandidate.nextElementSibling : null;
+                    else nextCandidate = nextCandidate ? nextCandidate.previousElementSibling : null;
+
+                    if (nextCandidate) itemsToCorrect.push(nextCandidate);
+                    else break;
+                }
+
+                // APPLY FORCE TARGET WORD
+                itemsToCorrect.forEach(item => {
+                    if (item.textContent !== STATE.targetWordForCountdown) {
+                        item.textContent = STATE.targetWordForCountdown;
+                        item.setAttribute('data-forced', 'true');
+                    }
+                });
+            }
+            // else: Do nothing. Random words are fine for Count > 1.
+
         } else {
             // Standard Rank/Letter Forcing (Tube Correction)
             // We always run this correction loop, but we target different items based on physics.
@@ -250,13 +285,13 @@ listElement.addEventListener('scroll', () => {
                 // Define the "Correction Zone"
                 let itemsToCorrect = [];
 
-                // LOGIC THRESHOLD (Kept High to avoid visible glitches)
-                const isFast = absVelocity > 3.0; // Still high for invisible swaps
-                const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
+                // LOGIC THRESHOLD
+                // We avoid touching the active item if it's visible and slow (isStopping).
+                // This prevents the "trembling" or "transforming" effect.
+                const isFast = absVelocity > 3.0;
 
-                // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
-                // It is sharp enough to be read, so changing it looks like a glitch.
-                if (isFast || isStopping) {
+                // Only correct active item if it's invisible (fast)
+                if (isFast) {
                     itemsToCorrect.push(activeItem);
                 }
 
