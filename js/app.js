@@ -44,6 +44,26 @@ const themeToggle = document.getElementById('theme-toggle');
 // --- Configuration ---
 const BATCH_SIZE = 80; // Increased for better overflow on large screens
 
+function resetAppState() {
+    STATE.forcedWord = null;
+    STATE.forcedIndex = 0;
+    STATE.isForcing = false;
+    STATE.forceCountdown = null;
+    STATE.targetWordForCountdown = null;
+    STATE.forcedRank = 1;
+
+    // Clear Inputs
+    inputRight.value = '';
+    indicatorRight.textContent = '(0)';
+    inputLeft.value = '';
+    inputLeftCount.value = '';
+    indicatorLeft.textContent = '(0)';
+
+    // Clear recent history to ensure fresh random start? 
+    // Maybe not necessary, but "suppression des configurations précédentes" implies state clean.
+    console.log("State Reset.");
+}
+
 // --- Utilities ---
 
 // Fisher-Yates Shuffle
@@ -463,39 +483,47 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
     let longPressTimer = null;
     let isPressing = false;
 
-    triggerEl.addEventListener('click', (e) => {
-        e.preventDefault();
-        // Single click logic optional, avoiding conflict with dblclick
-    });
+    // Triple Click Support (Replaces Double Click)
+    let tapCount = 0;
+    let tapTimer = null;
 
-    // Double Click / Double Tap Support
-    triggerEl.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        openModal();
-    });
-
-    // For Better Mobile Double Tap Support (if dblclick is slow)
-    let lastTap = 0;
     triggerEl.addEventListener('touchend', (e) => {
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-        if (tapLength < 500 && tapLength > 0) {
-            e.preventDefault();
+        if (e.cancelable) e.preventDefault(); // Stop click emulation
+        registerTap();
+        cancelLongPress(); // Ensure long press is cancelled
+    });
+
+    triggerEl.addEventListener('click', (e) => {
+        registerTap();
+    });
+
+    function registerTap() {
+        tapCount++;
+
+        if (tapCount === 1) {
+            tapTimer = setTimeout(() => {
+                tapCount = 0;
+            }, 600); // 600ms window
+        }
+
+        if (tapCount === 3) {
+            clearTimeout(tapTimer);
+            tapCount = 0;
             openModal();
         }
-        lastTap = currentTime;
-        cancelLongPress(); // Also cancels long press if it was started
-    });
+    }
 
     triggerEl.addEventListener('mousedown', startLongPress);
     triggerEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
         startLongPress();
-    }, { passive: false });
+    }, { passive: true });
 
     triggerEl.addEventListener('mouseup', cancelLongPress);
     triggerEl.addEventListener('mouseleave', cancelLongPress);
-    triggerEl.addEventListener('touchend', cancelLongPress);
+    triggerEl.addEventListener('touchend', (e) => {
+        cancelLongPress();
+        // Touchend is also handled in handleTap via listener above
+    });
 
     function startLongPress() {
         isPressing = true;
@@ -504,13 +532,13 @@ function setupTrigger(triggerEl, modalEl, inputEl) {
             if (isPressing) {
                 openModal();
                 isPressing = false;
-                // Vibrate if supported
                 if (navigator.vibrate) navigator.vibrate(50);
             }
         }, 1500);
     }
 
     function openModal() {
+        resetAppState(); // RESET STATE ON OPEN
         modalEl.showModal();
         inputEl.focus();
     }
@@ -583,15 +611,28 @@ formLeft.addEventListener('submit', (e) => {
         modalLeft.close();
 
         setTimeout(() => {
-            STATE.forcedWord = word; // We set this loosely, but main logic uses targetWordForCountdown
+            STATE.forcedWord = word;
             STATE.forcedIndex = 0;
             STATE.isForcing = true;
 
-            // Countdown setup
-            STATE.forceCountdown = count;
+            // Strict N-th logic:
+            // Input N=4 means "Show target at 4th throw".
+            // So we need 3 random throws before.
+            // Countdown should be N-1.
+            // If N=1, countdown=0 (immediate).
+            // If N=0 or empty, default to immediate (0).
+
+            let finalCount;
+            if (count > 0) {
+                finalCount = count - 1;
+            } else {
+                finalCount = 0;
+            }
+
+            STATE.forceCountdown = finalCount;
             STATE.targetWordForCountdown = word;
 
-            console.log(`ARMED LEFT: Word=${word}, Countdown=${count}`);
+            console.log(`ARMED LEFT: Word=${word}, UserInput=${count}, InternalCountdown=${finalCount}`);
 
             cleanAndArm(word);
         }, 100);
