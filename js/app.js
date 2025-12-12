@@ -682,6 +682,10 @@ formLeft.addEventListener('submit', (e) => {
 });
 
 function cleanAndArm(word) {
+    // 1. Prepare the Deck (Deck Shuffle)
+    // Exclude the target word explicitly from the generation pool
+    refreshSafeDeck(word);
+
     const activeItem = getActiveItem();
     if (activeItem) {
         // Clear everything below the active item to ensure our "clean" batch starts immediately
@@ -697,8 +701,6 @@ function cleanAndArm(word) {
     indicatorRight.textContent = '(0)';
 
     inputLeft.value = '';
-    // inputLeftCount was removed from DOM, so removing reference here to fix ReferenceError
-    // indicatorLeft was removed too
 
     updateActiveState();
 }
