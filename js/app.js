@@ -130,13 +130,26 @@ function createWordItem(text, isSnapTarget = false) {
 }
 
 // Helper: Refresh the Safe Deck
+// Helper: Refresh the Safe Deck
 function refreshSafeDeck(excludeWord = null) {
+    // Safety check for global WORDS
+    if (typeof WORDS === 'undefined' || !Array.isArray(WORDS)) {
+        console.error("CRITICAL: WORDS data missing");
+        STATE.safeDeck = ["ERREUR", "DATA"];
+        return;
+    }
+
     let sourceWords = [...WORDS];
     if (excludeWord) {
         sourceWords = sourceWords.filter(w => w !== excludeWord);
     }
-    // Also exclude generic markers just in case
+    // Filter unwanted
     sourceWords = sourceWords.filter(w => !['DEBUT', 'FIN', 'LISTE', 'VIDE'].includes(w.toUpperCase()));
+
+    // Safety: If deck is empty (e.g. dictionary only had the target word), refill it with placeholders
+    if (sourceWords.length === 0) {
+        sourceWords = ["ERREUR", "VIDE", "RELOAD"];
+    }
 
     STATE.safeDeck = shuffleArray(sourceWords);
     STATE.safeDeckIndex = 0;
@@ -156,27 +169,29 @@ function appendWords(count = BATCH_SIZE) {
 
     for (let i = 0; i < count; i++) {
         // Deck Shuffle Method: Linear Consumption
-        // This guarantees uniqueness (until deck loops) and zero crashes.
-
         let nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
         STATE.safeDeckIndex++;
 
+        // CRITICAL SAFETY CHECK: If nextWord is undefined, use a fallback
+        if (!nextWord) nextWord = "ERREUR";
+
         // Simple Visual Diversity Check: Initials
-        // If exact same initial as previous, just skip to next in deck.
-        // We do this ONCE to avoid any complexity/loops.
-        if (lastWordContent && nextWord[0] === lastWordContent[0]) {
+        // Added safety check: Ensure words exist and have length before checking [0]
+        if (lastWordContent && nextWord && lastWordContent.length > 0 && nextWord.length > 0 && nextWord[0] === lastWordContent[0]) {
             nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
             STATE.safeDeckIndex++;
+            if (!nextWord) nextWord = "ERREUR"; // Double safety
         }
 
-        // Failsafe: If somehow we picked the excluded target (should be impossible if refreshSafeDeck works), skip.
+        // Failsafe: If somehow we picked the excluded target
         if (STATE.isForcing && STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
             nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
             STATE.safeDeckIndex++;
+            if (!nextWord) nextWord = "ERREUR"; // Triple safety
         }
 
         // Update tracking
-        lastWordContent = nextWord; // Update for next iteration
+        lastWordContent = nextWord;
 
         const isSnapTarget = true;
         const item = createWordItem(nextWord, isSnapTarget);
@@ -655,7 +670,8 @@ formLeft.addEventListener('submit', (e) => {
 
     // Read Count from Radio
     const countInput = formLeft.querySelector('input[name="forcing-count"]:checked');
-    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0
+    // FIX: Default to 5 if nothing is selected (prevents infinite random loop)
+    const count = countInput ? parseInt(countInput.value, 10) : 5;
 
     if (word && word.length > 0) {
         modalLeft.close();
@@ -666,10 +682,9 @@ formLeft.addEventListener('submit', (e) => {
 
             // Strict Reset Logic
             STATE.currentRoundCounter = 0;
-            STATE.targetRound = count; // Use the direct number 1-5
+            STATE.targetRound = count;
 
             STATE.targetWordForCountdown = word;
-            // No more decremental countdown
             STATE.forceCountdown = null;
 
             console.log(`ARMED LEFT: Word=${word}, TargetRound=${STATE.targetRound}`);
@@ -682,27 +697,37 @@ formLeft.addEventListener('submit', (e) => {
 });
 
 function cleanAndArm(word) {
-    // 1. Prepare the Deck (Deck Shuffle)
-    // Exclude the target word explicitly from the generation pool
+    // 1. Prepare the Deck
     refreshSafeDeck(word);
 
     const activeItem = getActiveItem();
+
     if (activeItem) {
-        // Clear everything below the active item to ensure our "clean" batch starts immediately
+        // Clear everything below the active item
         while (activeItem.nextElementSibling) {
             activeItem.nextElementSibling.remove();
         }
+    } else {
+        // Fallback: If no active item found (rare bug), clear list to be safe
+        listElement.innerHTML = '';
     }
 
-    // Append a fresh batch which will now respect the "no target word" rule
-    appendWords(Math.max(BATCH_SIZE, 300));
+    // Append a fresh batch
+    // Force at least a screen's worth of words
+    appendWords(Math.max(BATCH_SIZE, 50));
 
     inputRight.value = '';
     indicatorRight.textContent = '(0)';
-
     inputLeft.value = '';
 
+    // Force update to make sure new words are recognized
     updateActiveState();
+
+    // Safety scroll adjust if we cleared everything
+    if (!activeItem) {
+        const items = listElement.querySelectorAll('.word-item');
+        if (items.length > 0) items[0].scrollIntoView();
+    }
 }
 
 
