@@ -98,9 +98,10 @@ main {
     /* Ensure main itself is centered in body is handled by body flex */
 }
 
-/* Static Viewfinder Overlay (Restored) */
+/* Static Viewfinder Overlay (Hidden for Minimalist Look) */
 main::before {
-    /* display: none; REMOVED to restore frame */
+    display: none;
+    /* User requested removal */
     content: '';
     position: absolute;
     top: 50%;
