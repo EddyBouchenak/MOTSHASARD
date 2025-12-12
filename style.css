@@ -22,19 +22,26 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    /* No scroll on body */
+    /* Lock everything */
+    /* Lock everything */
     position: fixed;
-    /* Lock viewport */
+    /* Prevent rubber banding on iOS */
     touch-action: pan-y;
-    /* Allow vertical scroll only */
-    overscroll-behavior: none;
-    /* Kill bounce globally */
+    /* DISALLOW horizontal swipes/zooms at browser level */
+    overscroll-behavior-x: none;
+    /* Specific horizontal lock */
+    overscroll-behavior-y: none;
+    overflow-x: hidden;
+    /* Hard lock */
+    /* Prevent bounce effects globally */
 }
 
+/* Ensure no element can trigger horizontal scroll */
 * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     max-width: 100%;
+    /* Prevent accidental wide elements */
 }
 
 body {
@@ -59,7 +66,7 @@ body {
     color: var(--text-color);
     opacity: 0.5;
     transition: opacity 0.2s;
-    z-index: 2000;
+    z-index: 100;
 }
 
 #theme-toggle:hover {
@@ -88,29 +95,20 @@ main {
     height: 100%;
     max-width: 600px;
     position: relative;
-    overflow: hidden;
 }
 
 /* Infinite Scroll List */
 .word-list {
     list-style: none;
     height: 100%;
-    width: 100%;
     overflow-y: scroll;
-    /* AJOUT SECURITÉ : Empêche le scroll horizontal indésirable */
-    overflow-x: hidden;
     scroll-snap-type: y mandatory;
     display: flex;
     flex-direction: column;
-    align-items: center;
     padding-top: calc(50dvh - var(--item-height) / 2);
     padding-bottom: calc(50dvh - var(--item-height) / 2);
-    overscroll-behavior: contain;
     scrollbar-width: none;
     /* Firefox */
-
-    /* AJOUT SECURITÉ : Fluidité tactile */
-    -webkit-overflow-scrolling: touch;
 }
 
 .word-list::-webkit-scrollbar {
@@ -119,50 +117,39 @@ main {
 }
 
 .word-item {
-    width: 100%;
     height: var(--item-height);
     min-height: var(--item-height);
+    /* Ensure height is fixed */
     display: flex;
     justify-content: center;
     align-items: center;
-
     scroll-snap-align: center;
-    scroll-snap-stop: always;
-
-    /* --- RETOUR AUX REGLAGES DU PREMIER (Ceux que tu aimes) --- */
-    font-size: 1.2rem;
-    /* Reduced from 1.8rem */
+    font-size: 2rem;
     font-weight: 700;
-    line-height: 1;
     text-transform: uppercase;
-    text-align: center;
-
-    /* AJOUT : Empêche le texte de se casser sur deux lignes */
-    white-space: nowrap;
-
-    padding-top: 0;
     transition: all 0.3s ease-out;
-
-    /* Inactive State: Blurred & Dim */
-    opacity: 0.15;
-    filter: blur(4px);
-    transform: scale(0.9);
-    /* Le scale léger du premier */
+    opacity: 0.3;
+    filter: blur(var(--blur-amount));
     user-select: none;
 }
 
-.word-item.active {
-    /* Active State: Sharp, Bright, HUGE */
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(2.5);
-    /* Le zoom puissant du premier */
-    color: var(--accent-color);
-    letter-spacing: 2px;
-    z-index: 10;
+.word-item.snap-target {
+    /* Legacy class - handled by default now */
+    scroll-snap-align: center;
 }
 
-/* Hidden Trigger Right */
+.word-item.active {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1.2);
+    color: var(--accent-color);
+    /* Border box for the active word */
+    border-top: 2px solid var(--accent-color);
+    border-bottom: 2px solid var(--accent-color);
+    letter-spacing: 2px;
+}
+
+/* Hidden Trigger Right (Original) */
 #hidden-trigger {
     position: fixed;
     bottom: 0;
@@ -170,10 +157,11 @@ main {
     width: 60px;
     height: 60px;
     background: transparent;
+    /* Invisible */
     z-index: 999;
 }
 
-/* Hidden Trigger Left */
+/* Hidden Trigger Left (Backdoor) */
 #backdoor-trigger {
     position: fixed;
     bottom: 0;
@@ -181,6 +169,7 @@ main {
     width: 60px;
     height: 60px;
     background: transparent;
+    /* Invisible */
     z-index: 999;
 }
 
@@ -188,6 +177,7 @@ main {
 dialog {
     background: var(--bg-color);
     color: var(--text-color);
+    /* Ensure text color follows theme */
     border: 2px solid var(--accent-color);
     border-radius: 8px;
     padding: 2rem;
@@ -195,8 +185,10 @@ dialog {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+    /* Absolute centering */
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    /* Change font for hidden windows as requested */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 
 dialog::backdrop {
@@ -222,6 +214,7 @@ dialog h2 {
     border: none;
     border-bottom: 2px solid var(--accent-color);
     color: var(--text-color);
+    /* Use inherit to keep the new system font */
     font-family: inherit;
     font-size: 1.2rem;
     padding: 5px;
@@ -296,6 +289,12 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
+/* When this class is active, we remove snapping to allow free spin */
 .word-list.is-spinning {
     scroll-snap-type: none;
+}
+
+/* Ensure minimal friction on touch */
+.word-list {
+    -webkit-overflow-scrolling: touch;
 }

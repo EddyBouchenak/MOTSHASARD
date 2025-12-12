@@ -77,24 +77,22 @@ function shuffleArray(array) {
     return arr;
 }
 
-// Helper: Get word starting with letter, excluding specific words
-function getWordStartingWith(letter, excludeWords = []) {
+function getWordStartingWith(letter, excludeWord) {
     // Advanced Mode: Use Rank
+    // If STATE.forcedRank is defined, we look for words where letter is at that rank.
+    // Rank 1 = Index 0, Rank 2 = Index 1, etc.
+
     if (typeof WORDS_BY_RANK !== 'undefined' && STATE.isForcing) {
         const rank = STATE.forcedRank || 1;
         const candidates = WORDS_BY_RANK[rank] ? WORDS_BY_RANK[rank][letter] : null;
 
         if (candidates && candidates.length > 0) {
-            // Filter out exact matches of excludeWords
-            // Create a Set for faster lookup if excludeWords is large, but array is fine for small visual buffer
-            const validCandidates = candidates.filter(w => !excludeWords.includes(w));
+            // Filter out exact match of excludeWord if needed 
+            // (though excludeWord might not be in this specific list)
+            const validCandidates = candidates.filter(w => w !== excludeWord);
 
             if (validCandidates.length > 0) {
                 return validCandidates[Math.floor(Math.random() * validCandidates.length)];
-            } else {
-                // Formatting Note: Fallback if all candidates are excluded (e.g. only 1 word exists)
-                // We MUST return a word that fits the criteria, so we ignore exclusions.
-                return candidates[Math.floor(Math.random() * candidates.length)];
             }
         }
     }
@@ -129,56 +127,32 @@ function createWordItem(text, isSnapTarget = false) {
     return li;
 }
 
-// Helper: Refresh the Safe Deck
-function refreshSafeDeck(excludeWord = null) {
-    let sourceWords = [...WORDS];
-    if (excludeWord) {
-        sourceWords = sourceWords.filter(w => w !== excludeWord);
-    }
-    // Also exclude generic markers just in case
-    sourceWords = sourceWords.filter(w => !['DEBUT', 'FIN', 'LISTE', 'VIDE'].includes(w.toUpperCase()));
-
-    STATE.safeDeck = shuffleArray(sourceWords);
-    STATE.safeDeckIndex = 0;
-    console.log(`Deck Refreshed. Size: ${STATE.safeDeck.length}. Excluded: ${excludeWord}`);
-}
-
-
 function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
 
-    // Get the last added word for initial-check
-    let lastWordContent = null;
-    const lastLi = listElement.querySelector('.word-item:last-child');
-    if (lastLi) {
-        lastWordContent = lastLi.textContent;
-    }
-
     for (let i = 0; i < count; i++) {
-        // Deck Shuffle Method: Linear Consumption
-        // This guarantees uniqueness (until deck loops) and zero crashes.
+        // Pure Random Generation
+        // Pure Random Generation with Anti-Repetition
+        let nextWord;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 10;
 
-        let nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
-        STATE.safeDeckIndex++;
+        do {
+            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
+            STATE.currentIndex++;
+            attempts++;
+        } while (STATE.recentWords.includes(nextWord) && attempts < MAX_ATTEMPTS);
 
-        // Simple Visual Diversity Check: Initials
-        // If exact same initial as previous, just skip to next in deck.
-        // We do this ONCE to avoid any complexity/loops.
-        if (lastWordContent && nextWord[0] === lastWordContent[0]) {
-            nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
-            STATE.safeDeckIndex++;
+        // Update History
+        STATE.recentWords.push(nextWord);
+        if (STATE.recentWords.length > 50) { // Keep last 50 words
+            STATE.recentWords.shift();
         }
 
-        // Failsafe: If somehow we picked the excluded target (should be impossible if refreshSafeDeck works), skip.
-        if (STATE.isForcing && STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
-            nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
-            STATE.safeDeckIndex++;
-        }
-
-        // Update tracking
-        lastWordContent = nextWord; // Update for next iteration
-
+        // In the new system, EVERY word is a potential landing spot (snap target)
+        // This ensures consistent physics for the prediction engine.
         const isSnapTarget = true;
+
         const item = createWordItem(nextWord, isSnapTarget);
         fragment.appendChild(item);
     }
@@ -277,100 +251,77 @@ listElement.addEventListener('scroll', () => {
             // Do nothing during scroll for countdown mode.
             // The forcing happens ONLY on the final stop.
         } else {
-            // Standard Rank Forcing (VRTX Mode) - Only runs if Backdoor Mode is NOT active
-
-            // STRICT SAFETY: If we are in "Count Mode" (Backdoor), WE MUST NOT RUN THIS LOGIC.
-            // This logic swaps words based on letters, which ruins the "Deck Shuffle" uniqueness.
-            if (STATE.targetWordForCountdown !== null) return;
-
+            // Standard Rank/Letter Forcing (Tube Correction)
             // We always run this correction loop, but we target different items based on physics.
             const activeItem = getActiveItem();
-            // Safety check
-            if (!activeItem) return;
 
-            // Only proceed if we have a valid forced word state
-            if (!STATE.forcedWord || STATE.forcedIndex >= STATE.forcedWord.length) return;
+            if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
+                const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+                const targetIndex = (STATE.forcedRank || 1) - 1;
 
-            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-            const targetIndex = (STATE.forcedRank || 1) - 1;
+                // Strategy:
+                // 1. Identify "Incoming" items based on direction.
+                //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
+                //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
+                // 2. Modify "Incoming" items aggressively.
+                // 3. ONLY Modify "Active" item if:
+                //    a) We are STOPPING (cleaning up the landing).
+                //    b) We are SPINNING FAST (invisible).
 
-            // Strategy:
-            // 1. Identify "Incoming" items based on direction.
-            //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
-            //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
-            // 2. Modify "Incoming" items aggressively.
+                // Define the "Correction Zone"
+                let itemsToCorrect = [];
 
-            // Collect items
-            let itemsToCorrect = [];
+                // LOGIC THRESHOLD (Kept High to avoid visible glitches)
+                const isFast = absVelocity > 3.0; // Still high for invisible swaps
+                const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
 
-            // LOGIC THRESHOLD (Kept High to avoid visible glitches)
-            const isFast = absVelocity > 3.0; // Still high for invisible swaps
-            const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
-
-            // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
-            if (isFast || isStopping) {
-                itemsToCorrect.push(activeItem);
-            }
-
-            // B. The Future Items (Anticipation)
-            // Look ahead 1 to 5 items to create a seamless buffer.
-            let nextCandidate = activeItem;
-            const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-            const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
-
-            for (let i = 0; i < lookAheadCount; i++) {
-                if (direction > 0) {
-                    nextCandidate = nextCandidate.nextElementSibling;
-                } else {
-                    nextCandidate = nextCandidate.previousElementSibling;
+                // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
+                // It is sharp enough to be read, so changing it looks like a glitch.
+                if (isFast || isStopping) {
+                    itemsToCorrect.push(activeItem);
                 }
 
-                if (nextCandidate) {
-                    itemsToCorrect.push(nextCandidate);
-                } else {
-                    break;
+                // B. The Future Items (Anticipation)
+                // Look ahead 1 to 5 items to create a seamless buffer.
+                let nextCandidate = activeItem;
+                const direction = STATE.scrollVelocity > 0 ? 1 : -1;
+                const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
+
+                for (let i = 0; i < lookAheadCount; i++) {
+                    if (direction > 0) {
+                        nextCandidate = nextCandidate.nextElementSibling;
+                    } else {
+                        nextCandidate = nextCandidate.previousElementSibling;
+                    }
+
+                    if (nextCandidate) {
+                        itemsToCorrect.push(nextCandidate);
+                    } else {
+                        break;
+                    }
                 }
-            }
 
-            // Prepare Exclusion List from current items to avoid dupes nearby
-            let currentVisibleWords = itemsToCorrect.map(el => el.textContent);
+                // Apply Correction to collected items
+                itemsToCorrect.forEach(item => {
+                    const currentWord = item.textContent;
+                    // Optimization: Don't re-read/re-write if already good
+                    // Check if it matches requirement
+                    const letterAtPos = currentWord[targetIndex];
 
-            // Also add active item's neighbors to exclusion to be safe
-            if (activeItem.previousElementSibling) currentVisibleWords.push(activeItem.previousElementSibling.textContent);
-            if (activeItem.nextElementSibling) currentVisibleWords.push(activeItem.nextElementSibling.textContent);
+                    // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
+                    // we might still want to swap to ensure variety if needed, 
+                    // but for now, simple matching is enough.
 
-
-            // Apply Correction to collected items
-            itemsToCorrect.forEach(item => {
-                const currentWord = item.textContent;
-                // Check if it matches requirement
-                const letterAtPos = currentWord[targetIndex];
-
-                // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
-                // we might still want to swap to ensure variety if needed.
-
-                // Only skip if it matches the target letter.
-                if (letterAtPos !== targetLetter) {
-                    // SWAP
-                    // Pass currentVisibleWords as exclusion
-                    const newWord = getWordStartingWith(targetLetter, currentVisibleWords);
-
-                    item.textContent = newWord;
-                    // Mark it
-                    item.setAttribute('data-forced', 'true');
-
-                    // Add to exclusion list so next items don't pick it
-                    currentVisibleWords.push(newWord);
-                }
-            });
-            // End of Correction Loop
-
-            // Failsafe Logic for Active Item on Stop
-            const centerItemForCheck = getActiveItem(); // Re-query just in case
-            if (centerItemForCheck && (centerItemForCheck.textContent[targetIndex] !== targetLetter)) {
-                // Failsafe
-                const fixedWord = getWordStartingWith(targetLetter, currentVisibleWords); // Use exclusion here too
-                centerItemForCheck.textContent = fixedWord;
+                    // Only skip if it matches the target letter.
+                    if (letterAtPos !== targetLetter) {
+                        // SWAP
+                        const newWord = getWordStartingWith(targetLetter, currentWord);
+                        item.textContent = newWord;
+                        // Mark it so we don't swap it again unnecessarily
+                        // (Though our check above handles that, the attribute might be useful for debug)
+                        item.setAttribute('data-forced', 'true');
+                    }
+                });
             }
         }
     }
@@ -385,33 +336,17 @@ listElement.addEventListener('scroll', () => {
         updateActiveState();
 
         if (STATE.isForcing) {
-            // New Strict Logic (Backdoor Mode)
-            if (STATE.targetWordForCountdown !== null) {
-                // Increment Counter (Start of "Generation" for this round)
-                STATE.currentRoundCounter++;
+            // New: Countdown Logic
+            if (STATE.forceCountdown !== null) {
+                if (STATE.forceCountdown > 0) {
+                    STATE.forceCountdown--;
+                    console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
 
-                const centerItem = getActiveItem();
-                let motGenere = centerItem ? centerItem.textContent : "???";
-
-                // Condition de Victoire
-                if (STATE.currentRoundCounter === STATE.targetRound) {
-                    // C'est le bon tour ! 
-                    if (centerItem && STATE.targetWordForCountdown) {
-                        centerItem.textContent = STATE.targetWordForCountdown;
-                        centerItem.classList.add('active'); // Ensure highlight
-                        motGenere = STATE.targetWordForCountdown;
-
-                        // Disable forcing immediately (One-shot)
-                        STATE.isForcing = false;
-                        STATE.targetWordForCountdown = null;
-                        STATE.forcedWord = null;
-                    }
-                } else {
-                    // Ce n'est PAS le bon tour -> Mot aléatoire
-                    // Si par hasard on tombe sur le mot cible, on le change !
+                    // Anti-Target Logic: Ensure we don't accidentally show the target word early
+                    const centerItem = getActiveItem();
                     if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
-                        // Fallback safe word
-                        let safeWord = "RATE";
+                        console.log("Accidental Target Hit during countdown! Swapping...");
+                        let safeWord = "RATE"; // Fallback
                         // Find a safe word
                         const attempts = 10;
                         for (let i = 0; i < attempts; i++) {
@@ -422,40 +357,61 @@ listElement.addEventListener('scroll', () => {
                             }
                         }
                         centerItem.textContent = safeWord;
-                        motGenere = safeWord;
                     }
+                    return; // Consume this turn as a random draw
                 }
 
-                // Débuggage Strict Obligatoire
-                console.log("Tour actuel : " + STATE.currentRoundCounter + " / Cible : " + STATE.targetRound + " -> Mot : " + motGenere);
-                return;
+                if (STATE.forceCountdown === 0) {
+                    // TIME TO STRIKE
+                    const centerItem = getActiveItem();
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.forceCountdown = null;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null; // Clear standard forcing too just in case
+                    }
+                    return; // Skip standard forcing logic
+                }
             }
 
 
-            // Standard Rank Forcing (VRTX Mode) - Only runs if Backdoor Mode is NOT active
-            // ... (Rest of existing logic for letter forcing)
             const centerItem = getActiveItem();
-            if (!centerItem) return;
+            // Skip standard forcing if we are in countdown mode (and not at 0 yet)
+            if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
 
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
-            if (centerItem.textContent[targetIndex] !== targetLetter) {
-                // Failsafe
+            // Check success
+            // Force-Update on Stop: If we somehow missed the swap during slowdown,
+            // we do a final "glitch" swap here to enforce the rule.
+            if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
+                console.log("Failsafe Swap Triggered");
                 const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
                 centerItem.textContent = fixedWord;
             }
 
-            if (centerItem.textContent[targetIndex] === targetLetter) {
+            // Verify again after potential fix
+            if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
+                // Success! Move to next letter for next scroll
                 STATE.forcedIndex++;
-                STATE.hasSwappedForCurrentIndex = false;
+                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
+
+                // Cleanup marks for the next round
                 listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
+
                 console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
+
                 if (STATE.forcedIndex >= STATE.forcedWord.length) {
                     STATE.isForcing = false;
                     STATE.forcedWord = null;
                     STATE.forcedIndex = 0;
-                    STATE.forcedRank = 1;
+                    STATE.forcedRank = 1; // Reset
                     console.log("Forcing Complete.");
                 }
             }
@@ -500,9 +456,6 @@ function init() {
     } else {
         STATE.shuffledWords = ["LISTE", "VIDE", "ERREUR", "DATA"];
     }
-
-    // Initialize Safe Deck for first load
-    refreshSafeDeck();
 
     // 2. Clear List
     listElement.innerHTML = '';
@@ -626,7 +579,7 @@ formRight.addEventListener('submit', (e) => {
             STATE.forcedIndex = 0;
             STATE.forcedRank = rank; // Store Rank
             STATE.isForcing = true;
-            STATE.forceCountdown = 0;
+            STATE.forceCooldown = 0;
             STATE.hasSwappedForCurrentIndex = false;
 
             // Standard behavior (No Countdown here)
@@ -655,24 +608,32 @@ formLeft.addEventListener('submit', (e) => {
 
     // Read Count from Radio
     const countInput = formLeft.querySelector('input[name="forcing-count"]:checked');
-    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0
+    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0 if nothing selected
 
     if (word && word.length > 0) {
         modalLeft.close();
 
         setTimeout(() => {
             STATE.forcedWord = word;
+            STATE.forcedIndex = 0;
             STATE.isForcing = true;
 
-            // Strict Reset Logic
-            STATE.currentRoundCounter = 0;
-            STATE.targetRound = count; // Use the direct number 1-5
+            // Strict N-th logic:
+            // Input N=3 means "Show target at 3rd throw".
+            // So we need 2 random throws before.
+            // Countdown should be N-1.
 
+            let finalCount;
+            if (count > 0) {
+                finalCount = count - 1;
+            } else {
+                finalCount = 0; // Immediate force if N=1 or 0
+            }
+
+            STATE.forceCountdown = finalCount;
             STATE.targetWordForCountdown = word;
-            // No more decremental countdown
-            STATE.forceCountdown = null;
 
-            console.log(`ARMED LEFT: Word=${word}, TargetRound=${STATE.targetRound}`);
+            console.log(`ARMED LEFT: Word=${word}, UserInput=${count}, InternalCountdown=${finalCount}`);
 
             cleanAndArm(word);
         }, 100);
@@ -684,21 +645,18 @@ formLeft.addEventListener('submit', (e) => {
 function cleanAndArm(word) {
     const activeItem = getActiveItem();
     if (activeItem) {
-        // Clear everything below the active item to ensure our "clean" batch starts immediately
         while (activeItem.nextElementSibling) {
             activeItem.nextElementSibling.remove();
         }
     }
-
-    // Append a fresh batch which will now respect the "no target word" rule
     appendWords(Math.max(BATCH_SIZE, 300));
 
     inputRight.value = '';
     indicatorRight.textContent = '(0)';
 
     inputLeft.value = '';
-    // inputLeftCount was removed from DOM, so removing reference here to fix ReferenceError
-    // indicatorLeft was removed too
+    inputLeftCount.value = '';
+    indicatorLeft.textContent = '(0)';
 
     updateActiveState();
 }
