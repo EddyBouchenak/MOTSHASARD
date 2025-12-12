@@ -147,9 +147,9 @@ function appendWords(count = BATCH_SIZE) {
                 // Skip this word if it matches the target
                 continue;
             }
-             // Also avoid the forcedWord from rank mode if that's active (though mutually exclusive usually)
+            // Also avoid the forcedWord from rank mode if that's active (though mutually exclusive usually)
             if (STATE.isForcing && STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
-                 continue;
+                continue;
             }
 
         } while ((STATE.recentWords.includes(nextWord) || (STATE.isForcing && nextWord === STATE.targetWordForCountdown)) && attempts < MAX_ATTEMPTS);
@@ -347,17 +347,33 @@ listElement.addEventListener('scroll', () => {
         updateActiveState();
 
         if (STATE.isForcing) {
-            // New: Countdown Logic
-            if (STATE.forceCountdown !== null) {
-                if (STATE.forceCountdown > 0) {
-                    STATE.forceCountdown--;
-                    console.log(`Countdown: ${STATE.forceCountdown} (Target: ${STATE.targetWordForCountdown})`);
+            // New Strict Logic (Backdoor Mode)
+            if (STATE.targetWordForCountdown !== null) {
+                // Increment Counter (Start of "Generation" for this round)
+                STATE.currentRoundCounter++;
 
-                    // Anti-Target Logic: Ensure we don't accidentally show the target word early
-                    const centerItem = getActiveItem();
+                const centerItem = getActiveItem();
+                let motGenere = centerItem ? centerItem.textContent : "???";
+
+                // Condition de Victoire
+                if (STATE.currentRoundCounter === STATE.targetRound) {
+                    // C'est le bon tour ! 
+                    if (centerItem && STATE.targetWordForCountdown) {
+                        centerItem.textContent = STATE.targetWordForCountdown;
+                        centerItem.classList.add('active'); // Ensure highlight
+                        motGenere = STATE.targetWordForCountdown;
+
+                        // Disable forcing immediately (One-shot)
+                        STATE.isForcing = false;
+                        STATE.targetWordForCountdown = null;
+                        STATE.forcedWord = null;
+                    }
+                } else {
+                    // Ce n'est PAS le bon tour -> Mot aléatoire
+                    // Si par hasard on tombe sur le mot cible, on le change !
                     if (centerItem && centerItem.textContent === STATE.targetWordForCountdown) {
-                        console.log("Accidental Target Hit during countdown! Swapping...");
-                        let safeWord = "RATE"; // Fallback
+                        // Fallback safe word
+                        let safeWord = "RATE";
                         // Find a safe word
                         const attempts = 10;
                         for (let i = 0; i < attempts; i++) {
@@ -368,61 +384,40 @@ listElement.addEventListener('scroll', () => {
                             }
                         }
                         centerItem.textContent = safeWord;
+                        motGenere = safeWord;
                     }
-                    return; // Consume this turn as a random draw
                 }
 
-                if (STATE.forceCountdown === 0) {
-                    // TIME TO STRIKE
-                    const centerItem = getActiveItem();
-                    if (centerItem && STATE.targetWordForCountdown) {
-                        centerItem.textContent = STATE.targetWordForCountdown;
-                        centerItem.classList.add('active'); // Ensure highlight
-                        console.log(`FORCE EXECUTED: ${STATE.targetWordForCountdown}`);
-
-                        // Disable forcing immediately (One-shot)
-                        STATE.isForcing = false;
-                        STATE.forceCountdown = null;
-                        STATE.targetWordForCountdown = null;
-                        STATE.forcedWord = null; // Clear standard forcing too just in case
-                    }
-                    return; // Skip standard forcing logic
-                }
+                // Débuggage Strict Obligatoire
+                console.log("Tour actuel : " + STATE.currentRoundCounter + " / Cible : " + STATE.targetRound + " -> Mot : " + motGenere);
+                return;
             }
 
 
+            // Standard Rank Forcing (VRTX Mode) - Only runs if Backdoor Mode is NOT active
+            // ... (Rest of existing logic for letter forcing)
             const centerItem = getActiveItem();
-            // Skip standard forcing if we are in countdown mode (and not at 0 yet)
-            if (STATE.forceCountdown !== null && STATE.forceCountdown > 0) return;
+            if (!centerItem) return;
 
             const targetLetter = STATE.forcedWord[STATE.forcedIndex];
             const targetIndex = (STATE.forcedRank || 1) - 1;
 
-            // Check success
-            // Force-Update on Stop: If we somehow missed the swap during slowdown,
-            // we do a final "glitch" swap here to enforce the rule.
-            if (centerItem && (centerItem.textContent[targetIndex] !== targetLetter)) {
-                console.log("Failsafe Swap Triggered");
+            if (centerItem.textContent[targetIndex] !== targetLetter) {
+                // Failsafe
                 const fixedWord = getWordStartingWith(targetLetter, centerItem.textContent);
                 centerItem.textContent = fixedWord;
             }
 
-            // Verify again after potential fix
-            if (centerItem && centerItem.textContent[targetIndex] === targetLetter) {
-                // Success! Move to next letter for next scroll
+            if (centerItem.textContent[targetIndex] === targetLetter) {
                 STATE.forcedIndex++;
-                STATE.hasSwappedForCurrentIndex = false; // Reset for next turn
-
-                // Cleanup marks for the next round
+                STATE.hasSwappedForCurrentIndex = false;
                 listElement.querySelectorAll('[data-forced]').forEach(el => el.removeAttribute('data-forced'));
-
                 console.log(`Confirmed: ${centerItem.textContent}. Next target index: ${STATE.forcedIndex}`);
-
                 if (STATE.forcedIndex >= STATE.forcedWord.length) {
                     STATE.isForcing = false;
                     STATE.forcedWord = null;
                     STATE.forcedIndex = 0;
-                    STATE.forcedRank = 1; // Reset
+                    STATE.forcedRank = 1;
                     console.log("Forcing Complete.");
                 }
             }
@@ -619,32 +614,24 @@ formLeft.addEventListener('submit', (e) => {
 
     // Read Count from Radio
     const countInput = formLeft.querySelector('input[name="forcing-count"]:checked');
-    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0 if nothing selected
+    const count = countInput ? parseInt(countInput.value, 10) : 0; // Default 0
 
     if (word && word.length > 0) {
         modalLeft.close();
 
         setTimeout(() => {
             STATE.forcedWord = word;
-            STATE.forcedIndex = 0;
             STATE.isForcing = true;
 
-            // Strict N-th logic:
-            // Input N=3 means "Show target at 3rd throw".
-            // So we need 2 random throws before.
-            // Countdown should be N-1.
+            // Strict Reset Logic
+            STATE.currentRoundCounter = 0;
+            STATE.targetRound = count; // Use the direct number 1-5
 
-            let finalCount;
-            if (count > 0) {
-                finalCount = count - 1;
-            } else {
-                finalCount = 0; // Immediate force if N=1 or 0
-            }
-
-            STATE.forceCountdown = finalCount;
             STATE.targetWordForCountdown = word;
+            // No more decremental countdown
+            STATE.forceCountdown = null;
 
-            console.log(`ARMED LEFT: Word=${word}, UserInput=${count}, InternalCountdown=${finalCount}`);
+            console.log(`ARMED LEFT: Word=${word}, TargetRound=${STATE.targetRound}`);
 
             cleanAndArm(word);
         }, 100);
@@ -661,7 +648,7 @@ function cleanAndArm(word) {
             activeItem.nextElementSibling.remove();
         }
     }
-    
+
     // Append a fresh batch which will now respect the "no target word" rule
     appendWords(Math.max(BATCH_SIZE, 300));
 
@@ -671,7 +658,7 @@ function cleanAndArm(word) {
     inputLeft.value = '';
     // inputLeftCount was removed from DOM, so removing reference here to fix ReferenceError
     // indicatorLeft was removed too
-    
+
     updateActiveState();
 }
 
