@@ -98,23 +98,7 @@ main {
     /* Ensure main itself is centered in body is handled by body flex */
 }
 
-/* Static Viewfinder Overlay */
-main::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: calc(var(--item-height) * 1.3);
-    /* Slightly larger to frame the scaled word comfortably */
-    transform: translateY(-50%);
-    border-top: 2px solid var(--accent-color);
-    border-bottom: 2px solid var(--accent-color);
-    pointer-events: none;
-    /* Let clicks pass through */
-    z-index: 10;
-    /* Sit above the scrolling text */
-}
+/* Static Viewfinder Overlay REMOVED as per request */
 
 /* Infinite Scroll List */
 .word-list {
@@ -159,8 +143,8 @@ main::before {
     scroll-snap-stop: always;
     /* Force stop at items, don't skip */
 
-    font-size: 3.5rem;
-    /* Significantly larger */
+    /* Reduced base size for the list */
+    font-size: 1.8rem;
     font-weight: 700;
     line-height: 1;
     /* Strict line height */
@@ -170,12 +154,17 @@ main::before {
 
     /* Adjusted Alignment: Removed padding-top to center perfectly */
     padding-top: 0;
-    /* To offset the generic "font-descent", usually a tiny padding-bottom helps, 
+    /* To offset the generic "font-descent", usually a tiny padding-bottom helps,
        but standard flex center is safest if font is well behaved. */
 
     transition: all 0.3s ease-out;
-    opacity: 0.3;
-    filter: blur(var(--blur-amount));
+
+    /* Inactive State: Blurred & Dim */
+    opacity: 0.15;
+    /* Very dim for focus effect */
+    filter: blur(4px);
+    /* Strong blur */
+    transform: scale(0.9);
     user-select: none;
 }
 
@@ -185,12 +174,16 @@ main::before {
 }
 
 .word-item.active {
+    /* Active State: Sharp, Bright, HUGE */
     opacity: 1;
     filter: blur(0);
-    transform: scale(1.2);
+    transform: scale(2.5);
+    /* Massive zoom for the active word */
     color: var(--accent-color);
     /* Borders removed - now handled by main::before */
     letter-spacing: 2px;
+    z-index: 10;
+    /* Ensure it pops over others */
 }
 
 /* Hidden Trigger Right (Original) */
