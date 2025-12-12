@@ -98,7 +98,24 @@ main {
     /* Ensure main itself is centered in body is handled by body flex */
 }
 
-/* Static Viewfinder Overlay REMOVED as per request */
+/* Static Viewfinder Overlay (Restored) */
+main::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Center horizontally */
+    transform: translate(-50%, -50%);
+    /* Precise Center */
+    width: 80%;
+    /* Don't touch edges */
+    height: calc(var(--item-height) * 1.3);
+    border-top: 2px solid var(--accent-color);
+    border-bottom: 2px solid var(--accent-color);
+    pointer-events: none;
+    /* Crucial: Pass clicks through */
+    z-index: 10;
+}
 
 /* Infinite Scroll List */
 .word-list {
@@ -106,7 +123,10 @@ main {
     height: 100%;
     width: 100%;
     overflow-y: scroll;
+    overflow-x: hidden;
+    /* Strict */
     scroll-snap-type: y mandatory;
+    /* Magnetic Scroll */
     display: flex;
     flex-direction: column;
     align-items: center;
