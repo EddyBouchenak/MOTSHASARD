@@ -700,17 +700,11 @@ function cleanAndArm(word) {
     // 1. Prepare the Deck
     refreshSafeDeck(word);
 
-    const activeItem = getActiveItem();
+    // Safer Reset Strategy:
+    // Instead of trying to keep the active item and deleting siblings (which can glitch layout),
+    // we simply wipe the list and start fresh. This ensures "Natural Scroll" physics are reset too.
 
-    if (activeItem) {
-        // Clear everything below the active item
-        while (activeItem.nextElementSibling) {
-            activeItem.nextElementSibling.remove();
-        }
-    } else {
-        // Fallback: If no active item found (rare bug), clear list to be safe
-        listElement.innerHTML = '';
-    }
+    listElement.innerHTML = '';
 
     // Append a fresh batch
     // Force at least a screen's worth of words
@@ -720,14 +714,15 @@ function cleanAndArm(word) {
     indicatorRight.textContent = '(0)';
     inputLeft.value = '';
 
-    // Force update to make sure new words are recognized
-    updateActiveState();
+    // Scroll to top immediately to show the new list
+    listElement.scrollTop = 0;
 
-    // Safety scroll adjust if we cleared everything
-    if (!activeItem) {
-        const items = listElement.querySelectorAll('.word-item');
-        if (items.length > 0) items[0].scrollIntoView();
-    }
+    // Force update after a repaint to ensure active state is caught
+    requestAnimationFrame(() => {
+        updateActiveState();
+        // Double check after small delay for mobile rendering
+        setTimeout(updateActiveState, 50);
+    });
 }
 
 
