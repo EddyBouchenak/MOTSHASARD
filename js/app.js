@@ -129,72 +129,54 @@ function createWordItem(text, isSnapTarget = false) {
     return li;
 }
 
+// Helper: Refresh the Safe Deck
+function refreshSafeDeck(excludeWord = null) {
+    let sourceWords = [...WORDS];
+    if (excludeWord) {
+        sourceWords = sourceWords.filter(w => w !== excludeWord);
+    }
+    // Also exclude generic markers just in case
+    sourceWords = sourceWords.filter(w => !['DEBUT', 'FIN', 'LISTE', 'VIDE'].includes(w.toUpperCase()));
+
+    STATE.safeDeck = shuffleArray(sourceWords);
+    STATE.safeDeckIndex = 0;
+    console.log(`Deck Refreshed. Size: ${STATE.safeDeck.length}. Excluded: ${excludeWord}`);
+}
+
+
 function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
-    let lastWordContent = null; // Initialize lastWordContent
+
+    // Get the last added word for initial-check
+    let lastWordContent = null;
+    const lastLi = listElement.querySelector('.word-item:last-child');
+    if (lastLi) {
+        lastWordContent = lastLi.textContent;
+    }
 
     for (let i = 0; i < count; i++) {
-        // Robust Random Generation with Failsafe
-        let nextWord;
-        let attempts = 0;
-        const MAX_ATTEMPTS = 50;
+        // Deck Shuffle Method: Linear Consumption
+        // This guarantees uniqueness (until deck loops) and zero crashes.
 
-        do {
-            // 1. Pick a candidate
-            nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
-            STATE.currentIndex++;
-            attempts++;
+        let nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
+        STATE.safeDeckIndex++;
 
-            // 2. Check Conditions
-            let isValid = true;
-
-            // A. Strict Uniqueness (Buffer)
-            if (STATE.recentWords.includes(nextWord)) {
-                isValid = false;
-            }
-
-            // B. Strict Initial Diversity (vs Previous Word)
-            // Safety check: ensure lastWordContent exists
-            if (isValid && lastWordContent && nextWord.charAt(0) === lastWordContent.charAt(0)) {
-                isValid = false;
-            }
-
-            // C. Forcing Initial Exclusion
-            if (isValid && STATE.isForcing && STATE.targetWordForCountdown) {
-                // Prevent word starting with target letter
-                if (nextWord.charAt(0) === STATE.targetWordForCountdown.charAt(0)) {
-                    isValid = false;
-                }
-                // Prevent target word itself
-                if (nextWord === STATE.targetWordForCountdown) {
-                    isValid = false;
-                }
-            }
-            // D. Rank Mode Exclusion
-            if (isValid && STATE.isForcing && STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
-                isValid = false;
-            }
-
-            // If valid, we are done!
-            if (isValid) {
-                break;
-            }
-
-            // If NOT valid, strict loop continues...
-            // UNLESS attempts >= MAX_ATTEMPTS, then the 'while' condition will break us out
-            // and we will accept 'nextWord' as is (Failsafe).
-
-        } while (attempts < MAX_ATTEMPTS);
-
-        // Update History whether valid or failsafe result
-        STATE.recentWords.push(nextWord);
-        // Buffer of 100
-        if (STATE.recentWords.length > 100) {
-            STATE.recentWords.shift();
+        // Simple Visual Diversity Check: Initials
+        // If exact same initial as previous, just skip to next in deck.
+        // We do this ONCE to avoid any complexity/loops.
+        if (lastWordContent && nextWord[0] === lastWordContent[0]) {
+            nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
+            STATE.safeDeckIndex++;
         }
 
-        // Update tracking for next iteration
-        lastWordContent = nextWord;
+        // Failsafe: If somehow we picked the excluded target (should be impossible if refreshSafeDeck works), skip.
+        if (STATE.isForcing && STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
+            nextWord = STATE.safeDeck[STATE.safeDeckIndex % STATE.safeDeck.length];
+            STATE.safeDeckIndex++;
+        }
+
+        // Update tracking
+        lastWordContent = nextWord; // Update for next iteration
 
         const isSnapTarget = true;
         const item = createWordItem(nextWord, isSnapTarget);
@@ -513,6 +495,9 @@ function init() {
     } else {
         STATE.shuffledWords = ["LISTE", "VIDE", "ERREUR", "DATA"];
     }
+
+    // Initialize Safe Deck for first load
+    refreshSafeDeck();
 
     // 2. Clear List
     listElement.innerHTML = '';
