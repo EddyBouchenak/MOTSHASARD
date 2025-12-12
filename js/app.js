@@ -141,7 +141,18 @@ function appendWords(count = BATCH_SIZE) {
             nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
             STATE.currentIndex++;
             attempts++;
-        } while (STATE.recentWords.includes(nextWord) && attempts < MAX_ATTEMPTS);
+
+            // Anti-Target Check: Never generate the target word randomly while arming
+            if (STATE.isForcing && STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
+                // Skip this word if it matches the target
+                continue;
+            }
+             // Also avoid the forcedWord from rank mode if that's active (though mutually exclusive usually)
+            if (STATE.isForcing && STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
+                 continue;
+            }
+
+        } while ((STATE.recentWords.includes(nextWord) || (STATE.isForcing && nextWord === STATE.targetWordForCountdown)) && attempts < MAX_ATTEMPTS);
 
         // Update History
         STATE.recentWords.push(nextWord);
@@ -579,7 +590,7 @@ formRight.addEventListener('submit', (e) => {
             STATE.forcedIndex = 0;
             STATE.forcedRank = rank; // Store Rank
             STATE.isForcing = true;
-            STATE.forceCooldown = 0;
+            STATE.forceCountdown = 0;
             STATE.hasSwappedForCurrentIndex = false;
 
             // Standard behavior (No Countdown here)
@@ -645,19 +656,22 @@ formLeft.addEventListener('submit', (e) => {
 function cleanAndArm(word) {
     const activeItem = getActiveItem();
     if (activeItem) {
+        // Clear everything below the active item to ensure our "clean" batch starts immediately
         while (activeItem.nextElementSibling) {
             activeItem.nextElementSibling.remove();
         }
     }
+    
+    // Append a fresh batch which will now respect the "no target word" rule
     appendWords(Math.max(BATCH_SIZE, 300));
 
     inputRight.value = '';
     indicatorRight.textContent = '(0)';
 
     inputLeft.value = '';
-    inputLeftCount.value = '';
-    indicatorLeft.textContent = '(0)';
-
+    // inputLeftCount was removed from DOM, so removing reference here to fix ReferenceError
+    // indicatorLeft was removed too
+    
     updateActiveState();
 }
 
