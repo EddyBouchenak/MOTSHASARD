@@ -159,7 +159,8 @@ main::before {
     scroll-snap-stop: always;
     /* Force stop at items, don't skip */
 
-    font-size: 2rem;
+    font-size: 3.5rem;
+    /* Significantly larger */
     font-weight: 700;
     line-height: 1;
     /* Strict line height */
@@ -167,8 +168,10 @@ main::before {
     text-align: center;
     /* Explicit text align */
 
-    /* Visual Correction: Push text down slightly to center caps */
-    padding-top: 0.15em;
+    /* Adjusted Alignment: Removed padding-top to center perfectly */
+    padding-top: 0;
+    /* To offset the generic "font-descent", usually a tiny padding-bottom helps, 
+       but standard flex center is safest if font is well behaved. */
 
     transition: all 0.3s ease-out;
     opacity: 0.3;
