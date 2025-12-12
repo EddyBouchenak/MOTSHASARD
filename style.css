@@ -130,8 +130,8 @@ main {
     scroll-snap-stop: always;
 
     /* --- RETOUR AUX REGLAGES DU PREMIER (Ceux que tu aimes) --- */
-    font-size: 1.8rem;
-    /* Taille fixe et stable */
+    font-size: 1.2rem;
+    /* Reduced from 1.8rem */
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;
