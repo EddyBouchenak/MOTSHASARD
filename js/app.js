@@ -77,22 +77,24 @@ function shuffleArray(array) {
     return arr;
 }
 
-function getWordStartingWith(letter, excludeWord) {
+// Helper: Get word starting with letter, excluding specific words
+function getWordStartingWith(letter, excludeWords = []) {
     // Advanced Mode: Use Rank
-    // If STATE.forcedRank is defined, we look for words where letter is at that rank.
-    // Rank 1 = Index 0, Rank 2 = Index 1, etc.
-
     if (typeof WORDS_BY_RANK !== 'undefined' && STATE.isForcing) {
         const rank = STATE.forcedRank || 1;
         const candidates = WORDS_BY_RANK[rank] ? WORDS_BY_RANK[rank][letter] : null;
 
         if (candidates && candidates.length > 0) {
-            // Filter out exact match of excludeWord if needed 
-            // (though excludeWord might not be in this specific list)
-            const validCandidates = candidates.filter(w => w !== excludeWord);
+            // Filter out exact matches of excludeWords
+            // Create a Set for faster lookup if excludeWords is large, but array is fine for small visual buffer
+            const validCandidates = candidates.filter(w => !excludeWords.includes(w));
 
             if (validCandidates.length > 0) {
                 return validCandidates[Math.floor(Math.random() * validCandidates.length)];
+            } else {
+                // Formatting Note: Fallback if all candidates are excluded (e.g. only 1 word exists)
+                // We MUST return a word that fits the criteria, so we ignore exclusions.
+                return candidates[Math.floor(Math.random() * candidates.length)];
             }
         }
     }
@@ -131,34 +133,65 @@ function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
 
     for (let i = 0; i < count; i++) {
-        // Pure Random Generation
-        // Pure Random Generation with Anti-Repetition
+        // Pure Random Generation with Strict Visual Diversity
         let nextWord;
         let attempts = 0;
-        const MAX_ATTEMPTS = 10;
+        const MAX_ATTEMPTS = 50; // Increased attempts for stricter rules
 
         do {
             nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
             STATE.currentIndex++;
             attempts++;
 
-            // Anti-Target Check: Never generate the target word randomly while arming
-            if (STATE.isForcing && STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
-                // Skip this word if it matches the target
-                continue;
-            }
-            // Also avoid the forcedWord from rank mode if that's active (though mutually exclusive usually)
-            if (STATE.isForcing && STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
+            // 1. Strict Uniqueness Check (Buffer based)
+            if (STATE.recentWords.includes(nextWord)) {
                 continue;
             }
 
-        } while ((STATE.recentWords.includes(nextWord) || (STATE.isForcing && nextWord === STATE.targetWordForCountdown)) && attempts < MAX_ATTEMPTS);
+            // 2. Strict Initial Diversity (N vs N+1)
+            // If we have a previous word, the new word MUST NOT start with the same letter.
+            if (lastWordContent && nextWord[0] === lastWordContent[0]) {
+                continue;
+            }
+
+            // 3. Forcing Strict Exclusions
+            if (STATE.isForcing) {
+                // A. Never show the target word itself
+                if (STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
+                    continue;
+                }
+
+                // B. Extension: Preceding word cannot start with Target's letter.
+                // Robust Solution: While forcing, we BAN any word starting with the Target's initial.
+                // This guarantees that *whatever* word ends up waiting before the target insertion 
+                // will NOT share its initial.
+                if (STATE.targetWordForCountdown && nextWord[0] === STATE.targetWordForCountdown[0]) {
+                    continue;
+                }
+
+                // C. Rank Force Exclusion (VRTX)
+                if (STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
+                    continue;
+                }
+            }
+
+            // If we reached here, the word is valid.
+            break;
+
+        } while (attempts < MAX_ATTEMPTS);
+
+        // Fallback if max attempts reached (rare): just take the word to avoid infinite loop
 
         // Update History
         STATE.recentWords.push(nextWord);
-        if (STATE.recentWords.length > 50) { // Keep last 50 words
+        // User requested "No duplicates in sequence". 
+        // A buffer of 100 covers ~4-5 screens, which is effectively "the sequence".
+        if (STATE.recentWords.length > 100) {
             STATE.recentWords.shift();
         }
+
+        // Update tracking for next iteration
+        lastWordContent = nextWord;
 
         // In the new system, EVERY word is a potential landing spot (snap target)
         // This ensures consistent physics for the prediction engine.
@@ -262,77 +295,95 @@ listElement.addEventListener('scroll', () => {
             // Do nothing during scroll for countdown mode.
             // The forcing happens ONLY on the final stop.
         } else {
-            // Standard Rank/Letter Forcing (Tube Correction)
+            // Standard Rank Forcing (VRTX Mode) - Only runs if Backdoor Mode is NOT active
             // We always run this correction loop, but we target different items based on physics.
             const activeItem = getActiveItem();
+            // Safety check
+            if (!activeItem) return;
 
-            if (activeItem && STATE.forcedWord && STATE.forcedIndex < STATE.forcedWord.length) {
-                const targetLetter = STATE.forcedWord[STATE.forcedIndex];
-                const targetIndex = (STATE.forcedRank || 1) - 1;
+            // Only proceed if we have a valid forced word state
+            if (!STATE.forcedWord || STATE.forcedIndex >= STATE.forcedWord.length) return;
 
-                // Strategy:
-                // 1. Identify "Incoming" items based on direction.
-                //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
-                //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
-                // 2. Modify "Incoming" items aggressively.
-                // 3. ONLY Modify "Active" item if:
-                //    a) We are STOPPING (cleaning up the landing).
-                //    b) We are SPINNING FAST (invisible).
+            const targetLetter = STATE.forcedWord[STATE.forcedIndex];
+            const targetIndex = (STATE.forcedRank || 1) - 1;
 
-                // Define the "Correction Zone"
-                let itemsToCorrect = [];
+            // Strategy:
+            // 1. Identify "Incoming" items based on direction.
+            //    If Scrolling DOWN (Velocity > 0), incoming are BELOW (nextSibling).
+            //    If Scrolling UP (Velocity < 0), incoming are ABOVE (previousSibling).
+            // 2. Modify "Incoming" items aggressively.
 
-                // LOGIC THRESHOLD (Kept High to avoid visible glitches)
-                const isFast = absVelocity > 3.0; // Still high for invisible swaps
-                const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
+            // Collect items
+            let itemsToCorrect = [];
 
-                // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
-                // It is sharp enough to be read, so changing it looks like a glitch.
-                if (isFast || isStopping) {
-                    itemsToCorrect.push(activeItem);
+            // LOGIC THRESHOLD (Kept High to avoid visible glitches)
+            const isFast = absVelocity > 3.0; // Still high for invisible swaps
+            const isStopping = absVelocity < 0.5 && absVelocity > 0.01;
+
+            // If we are in the "Momentum Zone" (0.5 to 3.0), we DO NOT touch the active item.
+            if (isFast || isStopping) {
+                itemsToCorrect.push(activeItem);
+            }
+
+            // B. The Future Items (Anticipation)
+            // Look ahead 1 to 5 items to create a seamless buffer.
+            let nextCandidate = activeItem;
+            const direction = STATE.scrollVelocity > 0 ? 1 : -1;
+            const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
+
+            for (let i = 0; i < lookAheadCount; i++) {
+                if (direction > 0) {
+                    nextCandidate = nextCandidate.nextElementSibling;
+                } else {
+                    nextCandidate = nextCandidate.previousElementSibling;
                 }
 
-                // B. The Future Items (Anticipation)
-                // Look ahead 1 to 5 items to create a seamless buffer.
-                let nextCandidate = activeItem;
-                const direction = STATE.scrollVelocity > 0 ? 1 : -1;
-                const lookAheadCount = 20; // Increased to 20 (approx 2 screens) for invisibility
-
-                for (let i = 0; i < lookAheadCount; i++) {
-                    if (direction > 0) {
-                        nextCandidate = nextCandidate.nextElementSibling;
-                    } else {
-                        nextCandidate = nextCandidate.previousElementSibling;
-                    }
-
-                    if (nextCandidate) {
-                        itemsToCorrect.push(nextCandidate);
-                    } else {
-                        break;
-                    }
+                if (nextCandidate) {
+                    itemsToCorrect.push(nextCandidate);
+                } else {
+                    break;
                 }
+            }
 
-                // Apply Correction to collected items
-                itemsToCorrect.forEach(item => {
-                    const currentWord = item.textContent;
-                    // Optimization: Don't re-read/re-write if already good
-                    // Check if it matches requirement
-                    const letterAtPos = currentWord[targetIndex];
+            // Prepare Exclusion List from current items to avoid dupes nearby
+            let currentVisibleWords = itemsToCorrect.map(el => el.textContent);
 
-                    // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
-                    // we might still want to swap to ensure variety if needed, 
-                    // but for now, simple matching is enough.
+            // Also add active item's neighbors to exclusion to be safe
+            if (activeItem.previousElementSibling) currentVisibleWords.push(activeItem.previousElementSibling.textContent);
+            if (activeItem.nextElementSibling) currentVisibleWords.push(activeItem.nextElementSibling.textContent);
 
-                    // Only skip if it matches the target letter.
-                    if (letterAtPos !== targetLetter) {
-                        // SWAP
-                        const newWord = getWordStartingWith(targetLetter, currentWord);
-                        item.textContent = newWord;
-                        // Mark it so we don't swap it again unnecessarily
-                        // (Though our check above handles that, the attribute might be useful for debug)
-                        item.setAttribute('data-forced', 'true');
-                    }
-                });
+
+            // Apply Correction to collected items
+            itemsToCorrect.forEach(item => {
+                const currentWord = item.textContent;
+                // Check if it matches requirement
+                const letterAtPos = currentWord[targetIndex];
+
+                // If doesn't match OR (crucial) if it's not marked as forced but coincidentally matches
+                // we might still want to swap to ensure variety if needed.
+
+                // Only skip if it matches the target letter.
+                if (letterAtPos !== targetLetter) {
+                    // SWAP
+                    // Pass currentVisibleWords as exclusion
+                    const newWord = getWordStartingWith(targetLetter, currentVisibleWords);
+
+                    item.textContent = newWord;
+                    // Mark it
+                    item.setAttribute('data-forced', 'true');
+
+                    // Add to exclusion list so next items don't pick it
+                    currentVisibleWords.push(newWord);
+                }
+            });
+            // End of Correction Loop
+
+            // Failsafe Logic for Active Item on Stop
+            const centerItemForCheck = getActiveItem(); // Re-query just in case
+            if (centerItemForCheck && (centerItemForCheck.textContent[targetIndex] !== targetLetter)) {
+                // Failsafe
+                const fixedWord = getWordStartingWith(targetLetter, currentVisibleWords); // Use exclusion here too
+                centerItemForCheck.textContent = fixedWord;
             }
         }
     }
