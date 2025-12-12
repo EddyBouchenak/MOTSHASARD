@@ -278,6 +278,11 @@ listElement.addEventListener('scroll', () => {
             // The forcing happens ONLY on the final stop.
         } else {
             // Standard Rank Forcing (VRTX Mode) - Only runs if Backdoor Mode is NOT active
+
+            // STRICT SAFETY: If we are in "Count Mode" (Backdoor), WE MUST NOT RUN THIS LOGIC.
+            // This logic swaps words based on letters, which ruins the "Deck Shuffle" uniqueness.
+            if (STATE.targetWordForCountdown !== null) return;
+
             // We always run this correction loop, but we target different items based on physics.
             const activeItem = getActiveItem();
             // Safety check
