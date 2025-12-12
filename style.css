@@ -153,12 +153,23 @@ main::before {
     /* Center text horizontally */
     align-items: center;
     /* Center text vertically */
+
+    /* Strict Snapping */
     scroll-snap-align: center;
+    scroll-snap-stop: always;
+    /* Force stop at items, don't skip */
+
     font-size: 2rem;
     font-weight: 700;
+    line-height: 1;
+    /* Strict line height */
     text-transform: uppercase;
     text-align: center;
     /* Explicit text align */
+
+    /* Visual Correction: Push text down slightly to center caps */
+    padding-top: 0.15em;
+
     transition: all 0.3s ease-out;
     opacity: 0.3;
     filter: blur(var(--blur-amount));
