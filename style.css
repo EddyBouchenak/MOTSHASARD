@@ -25,14 +25,12 @@ body {
     /* No scroll on body */
     position: fixed;
     /* Lock viewport */
-    /* Prevent rubber banding on iOS */
     touch-action: pan-y;
-    /* Allow vertical scroll only on specific elements */
+    /* Allow vertical scroll only */
     overscroll-behavior: none;
     /* Kill bounce globally */
 }
 
-/* Ensure no element can trigger horizontal scroll */
 * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
@@ -48,7 +46,6 @@ body {
     justify-content: center;
     align-items: center;
     inset: 0;
-    /* Simpler than top/left/... */
 }
 
 /* Theme Toggle */
@@ -63,7 +60,6 @@ body {
     opacity: 0.5;
     transition: opacity 0.2s;
     z-index: 2000;
-    /* Ensure on top of everything */
 }
 
 #theme-toggle:hover {
@@ -90,33 +86,9 @@ body {
 main {
     width: 100%;
     height: 100%;
-    /* Strict fill */
     max-width: 600px;
     position: relative;
     overflow: hidden;
-    /* Ensure nothing spills out of main */
-    /* Ensure main itself is centered in body is handled by body flex */
-}
-
-/* Static Viewfinder Overlay (Hidden for Minimalist Look) */
-main::before {
-    display: none;
-    /* User requested removal */
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    /* Center horizontally */
-    transform: translate(-50%, -50%);
-    /* Precise Center */
-    width: 80%;
-    /* Don't touch edges */
-    height: calc(var(--item-height) * 1.3);
-    border-top: 2px solid var(--accent-color);
-    border-bottom: 2px solid var(--accent-color);
-    pointer-events: none;
-    /* Crucial: Pass clicks through */
-    z-index: 10;
 }
 
 /* Infinite Scroll List */
@@ -125,21 +97,20 @@ main::before {
     height: 100%;
     width: 100%;
     overflow-y: scroll;
+    /* AJOUT SECURITÉ : Empêche le scroll horizontal indésirable */
     overflow-x: hidden;
-    /* Strict */
     scroll-snap-type: y mandatory;
-    /* Magnetic Scroll */
     display: flex;
     flex-direction: column;
     align-items: center;
     padding-top: calc(50dvh - var(--item-height) / 2);
     padding-bottom: calc(50dvh - var(--item-height) / 2);
-
-    /* Crucial Scroll Lock */
     overscroll-behavior: contain;
-
     scrollbar-width: none;
     /* Firefox */
+
+    /* AJOUT SECURITÉ : Fluidité tactile */
+    -webkit-overflow-scrolling: touch;
 }
 
 .word-list::-webkit-scrollbar {
@@ -148,66 +119,50 @@ main::before {
 }
 
 .word-item {
-    width: 90%;
-    /* Safety margin as requested */
-    margin: 0 auto;
-    /* Centering safety */
+    width: 100%;
     height: var(--item-height);
     min-height: var(--item-height);
-    /* Ensure height is fixed */
     display: flex;
     justify-content: center;
-    /* Center text horizontally */
     align-items: center;
-    /* Center text vertically */
 
-    /* Strict Snapping */
     scroll-snap-align: center;
     scroll-snap-stop: always;
-    /* Force stop at items, don't skip */
 
-    /* Responsive Font Size (Viewport Units) */
-    font-size: 4vw;
-    /* Base size ~4% of width. 4vw * 3.0 scale = 12vw active size. */
+    /* --- RETOUR AUX REGLAGES DU PREMIER (Ceux que tu aimes) --- */
+    font-size: 1.8rem;
+    /* Taille fixe et stable */
     font-weight: 700;
     line-height: 1;
-
     text-transform: uppercase;
     text-align: center;
+
+    /* AJOUT : Empêche le texte de se casser sur deux lignes */
     white-space: nowrap;
-    /* Prevent wrapping */
 
     padding-top: 0;
-
     transition: all 0.3s ease-out;
 
     /* Inactive State: Blurred & Dim */
     opacity: 0.15;
     filter: blur(4px);
-    transform: scale(1.0);
-    /* Reset base scale to 1 for clean math */
+    transform: scale(0.9);
+    /* Le scale léger du premier */
     user-select: none;
-}
-
-.word-item.snap-target {
-    /* Legacy class - handled by default now */
-    scroll-snap-align: center;
 }
 
 .word-item.active {
     /* Active State: Sharp, Bright, HUGE */
     opacity: 1;
     filter: blur(0);
-    transform: scale(3.0);
-    /* 4vw * 3.0 = 12vw final size. Safe for "BICYCLETTE" */
+    transform: scale(2.5);
+    /* Le zoom puissant du premier */
     color: var(--accent-color);
-    /* Borders removed - now handled by main::before */
     letter-spacing: 2px;
     z-index: 10;
-    /* Ensure it pops over others */
 }
 
-/* Hidden Trigger Right (Original) */
+/* Hidden Trigger Right */
 #hidden-trigger {
     position: fixed;
     bottom: 0;
@@ -215,11 +170,10 @@ main::before {
     width: 60px;
     height: 60px;
     background: transparent;
-    /* Invisible */
     z-index: 999;
 }
 
-/* Hidden Trigger Left (Backdoor) */
+/* Hidden Trigger Left */
 #backdoor-trigger {
     position: fixed;
     bottom: 0;
@@ -227,7 +181,6 @@ main::before {
     width: 60px;
     height: 60px;
     background: transparent;
-    /* Invisible */
     z-index: 999;
 }
 
@@ -235,7 +188,6 @@ main::before {
 dialog {
     background: var(--bg-color);
     color: var(--text-color);
-    /* Ensure text color follows theme */
     border: 2px solid var(--accent-color);
     border-radius: 8px;
     padding: 2rem;
@@ -243,10 +195,8 @@ dialog {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    /* Absolute centering */
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    /* Change font for hidden windows as requested */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 dialog::backdrop {
@@ -272,7 +222,6 @@ dialog h2 {
     border: none;
     border-bottom: 2px solid var(--accent-color);
     color: var(--text-color);
-    /* Use inherit to keep the new system font */
     font-family: inherit;
     font-size: 1.2rem;
     padding: 5px;
@@ -347,12 +296,6 @@ dialog h2 {
 }
 
 /* Physics & Scrolling UX */
-/* When this class is active, we remove snapping to allow free spin */
 .word-list.is-spinning {
     scroll-snap-type: none;
-}
-
-/* Ensure minimal friction on touch */
-.word-list {
-    -webkit-overflow-scrolling: touch;
 }
