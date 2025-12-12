@@ -100,8 +100,7 @@ main {
 
 /* Static Viewfinder Overlay (Restored) */
 main::before {
-    display: none;
-    /* Hide frame as requested */
+    /* display: none; REMOVED to restore frame */
     content: '';
     position: absolute;
     top: 50%;
