@@ -131,61 +131,64 @@ function createWordItem(text, isSnapTarget = false) {
 
 function appendWords(count = BATCH_SIZE) {
     const fragment = document.createDocumentFragment();
+    let lastWordContent = null; // Initialize lastWordContent
 
     for (let i = 0; i < count; i++) {
-        // Pure Random Generation with Strict Visual Diversity
+        // Robust Random Generation with Failsafe
         let nextWord;
         let attempts = 0;
-        const MAX_ATTEMPTS = 50; // Increased attempts for stricter rules
+        const MAX_ATTEMPTS = 50;
 
         do {
+            // 1. Pick a candidate
             nextWord = STATE.shuffledWords[STATE.currentIndex % STATE.shuffledWords.length];
             STATE.currentIndex++;
             attempts++;
 
-            // 1. Strict Uniqueness Check (Buffer based)
+            // 2. Check Conditions
+            let isValid = true;
+
+            // A. Strict Uniqueness (Buffer)
             if (STATE.recentWords.includes(nextWord)) {
-                continue;
+                isValid = false;
             }
 
-            // 2. Strict Initial Diversity (N vs N+1)
-            // If we have a previous word, the new word MUST NOT start with the same letter.
-            if (lastWordContent && nextWord[0] === lastWordContent[0]) {
-                continue;
+            // B. Strict Initial Diversity (vs Previous Word)
+            // Safety check: ensure lastWordContent exists
+            if (isValid && lastWordContent && nextWord.charAt(0) === lastWordContent.charAt(0)) {
+                isValid = false;
             }
 
-            // 3. Forcing Strict Exclusions
-            if (STATE.isForcing) {
-                // A. Never show the target word itself
-                if (STATE.targetWordForCountdown && nextWord === STATE.targetWordForCountdown) {
-                    continue;
+            // C. Forcing Initial Exclusion
+            if (isValid && STATE.isForcing && STATE.targetWordForCountdown) {
+                // Prevent word starting with target letter
+                if (nextWord.charAt(0) === STATE.targetWordForCountdown.charAt(0)) {
+                    isValid = false;
                 }
-
-                // B. Extension: Preceding word cannot start with Target's letter.
-                // Robust Solution: While forcing, we BAN any word starting with the Target's initial.
-                // This guarantees that *whatever* word ends up waiting before the target insertion 
-                // will NOT share its initial.
-                if (STATE.targetWordForCountdown && nextWord[0] === STATE.targetWordForCountdown[0]) {
-                    continue;
-                }
-
-                // C. Rank Force Exclusion (VRTX)
-                if (STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
-                    continue;
+                // Prevent target word itself
+                if (nextWord === STATE.targetWordForCountdown) {
+                    isValid = false;
                 }
             }
+            // D. Rank Mode Exclusion
+            if (isValid && STATE.isForcing && STATE.forcedWord && !STATE.targetWordForCountdown && nextWord === STATE.forcedWord) {
+                isValid = false;
+            }
 
-            // If we reached here, the word is valid.
-            break;
+            // If valid, we are done!
+            if (isValid) {
+                break;
+            }
+
+            // If NOT valid, strict loop continues...
+            // UNLESS attempts >= MAX_ATTEMPTS, then the 'while' condition will break us out
+            // and we will accept 'nextWord' as is (Failsafe).
 
         } while (attempts < MAX_ATTEMPTS);
 
-        // Fallback if max attempts reached (rare): just take the word to avoid infinite loop
-
-        // Update History
+        // Update History whether valid or failsafe result
         STATE.recentWords.push(nextWord);
-        // User requested "No duplicates in sequence". 
-        // A buffer of 100 covers ~4-5 screens, which is effectively "the sequence".
+        // Buffer of 100
         if (STATE.recentWords.length > 100) {
             STATE.recentWords.shift();
         }
@@ -193,10 +196,7 @@ function appendWords(count = BATCH_SIZE) {
         // Update tracking for next iteration
         lastWordContent = nextWord;
 
-        // In the new system, EVERY word is a potential landing spot (snap target)
-        // This ensures consistent physics for the prediction engine.
         const isSnapTarget = true;
-
         const item = createWordItem(nextWord, isSnapTarget);
         fragment.appendChild(item);
     }
